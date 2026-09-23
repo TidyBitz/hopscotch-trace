@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::time::Duration;
 
-pub const UA: &str = concat!("hopscotch-trace/", env!("CARGO_PKG_VERSION"), " (+https://github.com/hopscotch-trace)");
+pub const UA: &str = concat!("hopscotch-trace/", env!("CARGO_PKG_VERSION"), " (+https://github.com/TidyBitz/hopscotch-trace)");
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct IpRecord {
