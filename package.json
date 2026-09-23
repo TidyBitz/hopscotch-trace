@@ -1,0 +1,16 @@
+{
+  "name": "hopscotch-trace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hopscotch: a visual traceroute for the desktop",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "test:ui": "node tests/smoke.js",
+    "test:core": "cargo test -p hopscotch-core"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

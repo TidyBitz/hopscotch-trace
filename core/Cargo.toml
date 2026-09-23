@@ -1,0 +1,17 @@
+[package]
+name = "hopscotch-core"
+description = "The parts of Hopscotch that talk to the network: traceroute, ping, geolocation, RDAP, DNS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+dns-lookup = "2"
+thiserror = "1"
+
+[target.'cfg(windows)'.dependencies]
+# nothing extra: process flags come from std::os::windows
