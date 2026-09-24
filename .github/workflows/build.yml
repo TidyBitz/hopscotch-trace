@@ -78,6 +78,24 @@ jobs:
           else
             npx tauri build --bundles ${{ matrix.bundles }}
           fi
+      - name: Repack the AppImage without host-provided graphics libraries
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          cd target/release/bundle/appimage
+          img=$(ls *.AppImage)
+          chmod +x "$img"
+          ./"$img" --appimage-extract > /dev/null
+          # linuxdeploy copies these in, but they sit underneath the host's Mesa/EGL
+          # driver, which needs the host's own versions: with the bundled ones first on
+          # LD_LIBRARY_PATH, eglGetPlatformDisplay fails (EGL_BAD_PARAMETER) on Fedora.
+          find squashfs-root \( -name 'libwayland-*.so*' -o -name 'libxkbcommon*.so*' -o -name 'libxcb*.so*' \) -print -delete
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          rm -f "$img"
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$img"
+          rm -rf squashfs-root appimagetool
+          ls -la
       - name: Collect portable and installer files
         shell: bash
         run: |
