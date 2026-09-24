@@ -49,7 +49,7 @@ jobs:
             rust_target: universal-apple-darwin
           - name: Linux
             os: ubuntu-24.04
-            bundles: appimage,deb,rpm
+            bundles: appimage,deb
             rust_target: ''
     runs-on: ${{ matrix.os }}
     steps:
@@ -112,7 +112,6 @@ jobs:
             Linux)
               cp target/release/bundle/appimage/*.AppImage "out/Hopscotch-linux-x86_64.AppImage"
               cp target/release/bundle/deb/*.deb out/ 2>/dev/null || true
-              cp target/release/bundle/rpm/*.rpm out/ 2>/dev/null || true
               ;;
           esac
           ls -la out

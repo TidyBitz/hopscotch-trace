@@ -74,7 +74,7 @@ fn start_trace(app: AppHandle, reg: State<'_, Registry>, id: String, target: Str
     if let Some(old) = reg.traces.lock().unwrap().insert(id.clone(), cancel.clone()) {
         old.cancel();
     }
-    let opts = trace::TraceOpts { max_hops: max_hops.unwrap_or(30).clamp(1, 64), wait_ms: wait_ms.unwrap_or(1500).clamp(200, 10_000), queries: 3 };
+    let opts = trace::TraceOpts { max_hops: max_hops.unwrap_or(30).clamp(1, 64), wait_ms: wait_ms.unwrap_or(1500).clamp(200, 10_000), queries: 3, give_up_after: 5 };
     std::thread::Builder::new()
         .name(format!("trace-{id}"))
         .spawn(move || {

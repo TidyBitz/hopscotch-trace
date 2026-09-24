@@ -19,11 +19,16 @@ pub struct TraceOpts {
     pub max_hops: u8,
     pub wait_ms: u32,
     pub queries: u8,
+    /// Stop once this many hops in a row have not answered, after at least
+    /// one hop has. A destination that drops probes never ends the trace on
+    /// its own, so without this the tool runs on to `max_hops`, mostly
+    /// printing `* * *`. 0 disables it.
+    pub give_up_after: u8,
 }
 
 impl Default for TraceOpts {
     fn default() -> Self {
-        Self { max_hops: 30, wait_ms: 1500, queries: 3 }
+        Self { max_hops: 30, wait_ms: 1500, queries: 3, give_up_after: 5 }
     }
 }
 
@@ -34,8 +39,9 @@ pub enum TraceEvent {
     Started { tool: String, dest: Option<String> },
     /// One hop finished (all its probes came back or timed out).
     Hop(HopLine),
-    /// The tool exited. `reached` is true when the last hop is the destination.
-    Done { reached: bool, hops: u8 },
+    /// The tool exited. `reached` is true when the last hop is the destination;
+    /// `gave_up` when we stopped it after `give_up_after` silent hops.
+    Done { reached: bool, hops: u8, gave_up: bool },
     /// The tool could not be run, or exited with an error before any hop.
     Error { message: String },
 }
@@ -141,6 +147,23 @@ pub fn run<F: FnMut(TraceEvent)>(target: &str, opts: &TraceOpts, cancel: &Cancel
     let mut pending: Option<HopLine> = None; // tracepath: lines of the hop being assembled
     let mut hops: u8 = 0;
     let mut last: Option<HopLine> = None;
+    let mut answered = false;
+    let mut silent_run: u8 = 0;
+    let mut gave_up = false;
+    macro_rules! note_hop {
+        ($h:expr) => {{
+            let h: HopLine = $h;
+            hops = hops.max(h.hop);
+            if h.addrs.is_empty() {
+                silent_run = silent_run.saturating_add(1);
+            } else {
+                answered = true;
+                silent_run = 0;
+            }
+            last = Some(h.clone());
+            emit(TraceEvent::Hop(h));
+        }};
+    }
 
     for line in reader.lines() {
         if cancel.is_cancelled() {
@@ -174,25 +197,24 @@ pub fn run<F: FnMut(TraceEvent)>(target: &str, opts: &TraceOpts, cancel: &Cancel
                         pending = Some(p);
                     }
                     Some(p) => {
-                        hops = hops.max(p.hop);
-                        last = Some(p.clone());
-                        emit(TraceEvent::Hop(p));
+                        note_hop!(p);
                         pending = Some(h);
                     }
                     None => pending = Some(h),
                 }
             }
-            _ => {
-                hops = hops.max(h.hop);
-                last = Some(h.clone());
-                emit(TraceEvent::Hop(h));
+            _ => note_hop!(h),
+        }
+        if answered && opts.give_up_after > 0 && silent_run >= opts.give_up_after {
+            gave_up = true;
+            if let Some(pid) = *cancel.child.lock().unwrap() {
+                kill(pid);
             }
+            break;
         }
     }
     if let Some(p) = pending.take() {
-        hops = hops.max(p.hop);
-        last = Some(p.clone());
-        emit(TraceEvent::Hop(p));
+        note_hop!(p);
     }
     let status = child.wait();
     *cancel.child.lock().unwrap() = None;
@@ -222,7 +244,7 @@ pub fn run<F: FnMut(TraceEvent)>(target: &str, opts: &TraceOpts, cancel: &Cancel
         (Some(d), Some(h)) => h.addrs.iter().any(|a| a == d),
         _ => false,
     };
-    emit(TraceEvent::Done { reached, hops });
+    emit(TraceEvent::Done { reached, hops, gave_up });
 }
 
 /// Turn the tool's stderr into something a person can act on.
@@ -245,6 +267,11 @@ mod tests {
         assert!(friendly("traceroute: unknown host nowhere.invalid").contains("didn't resolve"));
         assert!(friendly("traceroute: socket: Operation not permitted").contains("rights"));
         assert_eq!(friendly("something odd\nsecond line"), "something odd");
+    }
+    #[test]
+    fn defaults_give_up_on_silence() {
+        let o = TraceOpts::default();
+        assert!(o.give_up_after > 0 && o.give_up_after < o.max_hops);
     }
     #[test]
     fn tool_choice_is_sane() {

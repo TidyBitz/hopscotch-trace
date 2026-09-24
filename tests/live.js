@@ -89,6 +89,19 @@ const fs = require('fs');
   await p.evaluate(() => { window.__FAKE_CANCEL_SAVE = true; }); await p.click('[data-export="runs-csv"]'); await p.waitForTimeout(200);
   check('cancelled save says so', /Not saved/.test(await txt('#status')), await txt('#status'));
 
+  // a destination that drops probes: the tool trails off into silence, the tail is dropped and the status says so.
+  // The router named for Denver sits in Denver even though the address database files it under London.
+  await p.evaluate(() => { window.__FAKE_REACHED = false; window.__FAKE_ROUTE = [
+    { hop: 1, addrs: ['192.168.1.1'], rtts: [1.1, 1.0, 1.2] }, { hop: 2, addrs: ['198.51.100.9'], rtts: [12, 12.4, 12.1] },
+    { hop: 3, addrs: [], rtts: [null, null, null] }, { hop: 4, addrs: [], rtts: [null, null, null] }, { hop: 5, addrs: [], rtts: [null, null, null] },
+    { hop: 6, addrs: [], rtts: [null, null, null] }, { hop: 7, addrs: [], rtts: [null, null, null] }]; });
+  await p.fill('#target', 'silent.example'); await p.keyboard.press('Enter'); await p.waitForTimeout(2400);
+  const rows3 = await p.$$eval('#dock tbody tr', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+  check('silent tail dropped', rows3.length === 2, rows3.length + ' rows');
+  check('status explains the silence', /didn't answer/.test(await txt('#status')) && /5 hops after/.test(await txt('#status')), await txt('#status'));
+  check('place taken from the router name', /Denver/.test(rows3[1] || '') && !/London/.test(rows3[1] || ''), rows3[1]);
+  await p.evaluate(() => { delete window.__FAKE_REACHED; window.__FAKE_ROUTE = null; });
+
   check('no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();
   console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

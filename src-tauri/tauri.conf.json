@@ -44,7 +44,7 @@
     },
     "linux": {
       "appimage": {
-        "bundleMediaFramework": false
+        "bundleMediaFramework": true
       }
     },
     "macOS": {

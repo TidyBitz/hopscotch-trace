@@ -24,7 +24,7 @@ Every push to `main` builds all three platforms in GitHub Actions; tagged releas
 | --- | --- | --- |
 | Windows 10/11 | `Hopscotch-portable-windows-x64.exe` | Needs the WebView2 runtime, which Windows ships. An NSIS installer is built too. |
 | macOS 10.15+ | `Hopscotch-macos-universal.app.zip` | Not notarized yet: the first time, right-click the app and choose Open. |
-| Linux | `Hopscotch-linux-x86_64.AppImage` | `chmod +x` and run. Needs `traceroute` or `tracepath` installed (see below). A `.deb` is built too. |
+| Linux | `Hopscotch-linux-x86_64.AppImage` | `chmod +x` and run. Needs `traceroute` or `tracepath` installed (see below). A `.deb` is built too. The AppImage bundles WebKitGTK and GStreamer but leaves Wayland, X11 and Mesa to the host, so it runs on current Fedora and Ubuntu alike. |
 
 ## How it traces
 

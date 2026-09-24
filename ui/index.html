@@ -934,7 +934,7 @@ const PRESETS = {
     { c: '@home', net: 'prairie', role: 'core' }, { c: '@home', net: 'edge', role: 'peer' }, { c: '@home', net: 'edge', dest: true, anycast: true }
   ]
 };
-const SUGGESTIONS = ['chinadaily.com.cn', 'mea.gov.in', 'osu.edu', 'google.com', 'u-tokyo.ac.jp', 'sydney.edu.au', 'usp.br', 'uct.ac.za', 'unam.mx', 'kth.se', 'nowhere.invalid'];
+const SUGGESTIONS = LIVE ? [] : ['chinadaily.com.cn', 'mea.gov.in', 'osu.edu', 'google.com', 'u-tokyo.ac.jp', 'sydney.edu.au', 'usp.br', 'uct.ac.za', 'unam.mx', 'kth.se', 'nowhere.invalid'];
 
 const TLD_CITY = { uk: 'lon', de: 'fra', fr: 'par', nl: 'ams', es: 'mad', it: 'mil', se: 'sto', pt: 'lis', ru: 'mow', tr: 'ist', eg: 'cai', ae: 'dxb', in: 'bom', sg: 'sin', hk: 'hkg', tw: 'tpe', cn: 'sha', kr: 'sel', jp: 'tyo', au: 'syd', nz: 'akl', br: 'sao', ar: 'bue', cl: 'scl', co: 'bog', pe: 'lim', mx: 'mex', ca: 'tor', ng: 'los', ke: 'nbo', za: 'jnb' };
 const US_CITIES = ['chi', 'dal', 'den', 'nyc', 'ash', 'atl', 'sea', 'sjc', 'lax', 'mia', 'cmh'];
@@ -1026,9 +1026,26 @@ function settleLive(tr) {
   let prev = null; hs.forEach(h => { if (prev) { const a = CITY[prev.c], b = CITY[h.c]; h.prev = prev.i; h.legKm = prev.c === h.c ? 0 : km([a.lon, a.lat], [b.lon, b.lat]); } else { h.prev = null; h.legKm = 0; } prev = h; });
   buildGeometry(tr);
 }
+// Router names usually carry the place: an airport code (den, lhr, nrt) or a city
+// (denver, frankfurt). That beats an address database, which files CDN and transit
+// addresses under a head office a continent away. Only the host part is read,
+// never the domain, and only codes for cities the map knows.
+const HOST_PLACES = (() => {
+  const m = {};
+  for (const k in CITY_ROWS) { const r = CITY_ROWS[k]; if (!r[5]) continue; m[k] = k; const n = r[0].toLowerCase(); if (/^[a-z]+$/.test(n)) m[n] = k; }
+  Object.assign(m, { lhr: 'lon', lgw: 'lon', jfk: 'nyc', ewr: 'nyc', lga: 'nyc', newyork: 'nyc', ord: 'chi', iad: 'ash', dca: 'ash', dfw: 'dal', sfo: 'sjc', sanjose: 'sjc', losangeles: 'lax', kansascity: 'mci', nrt: 'tyo', hnd: 'tyo', cdg: 'par', yyz: 'tor', gru: 'sao', saopaulo: 'sao', eze: 'bue', buenosaires: 'bue', arn: 'sto', svo: 'mow', dme: 'mow', icn: 'sel', hongkong: 'hkg', capetown: 'cpt', mexicocity: 'mex', newdelhi: 'del' });
+  ['los', 'mil', 'del'].forEach(k => delete m[k]); // too often something else in a name
+  return m;
+})();
+function hintPlace(host) {
+  if (!host || /^[\d.:]+$/.test(host)) return null;
+  const labels = host.toLowerCase().split('.'); if (labels.length < 3) return null;
+  for (const label of labels.slice(0, -2)) for (const t of label.split(/[-_]/)) { const w = t.replace(/\d+$/, ''); if (w.length >= 3 && HOST_PLACES[w]) return HOST_PLACES[w]; }
+  return null;
+}
 function applyGeo(tr, h, g) {
   h.geo = g; if (!g) return;
-  if (g.lat != null) h.place = liveCity(g);
+  if (g.lat != null && !h.hinted) h.place = liveCity(g);
   const nk = liveNet(g); if (nk) h.netKey = nk;
   else if (h.dest) h.netKey = 'dest';
 }
@@ -2256,6 +2273,7 @@ const App = (() => {
     if (tr.status === 'running') return `Tracing the route to ${tr.target}…`;
     if (tr.keep) return `Probing every hop of ${tr.target} every ${state.every === 1 ? 'second' : state.every + ' seconds'}.`;
     if (tr.status === 'stopped') return `Stopped after hop ${tr.revealed}.`;
+    if (tr.live && tr.reached === false && tr.hops.length) return `Trace ended at hop ${tr.hops.length}: ${tr.target} didn't answer${tr.trailingSilent ? `, and neither did the ${tr.trailingSilent} hop${tr.trailingSilent === 1 ? '' : 's'} after that` : ''}. The route stops at the last router that did.`;
     return `Trace complete. ${tr.hops.length} hops to ${tr.target}.`;
   }
 
@@ -2312,8 +2330,8 @@ const App = (() => {
           settleLive(tr);
           if (isActive(tr)) { if (state.follow) tr.sel = i; MapView.arrive(tr, i); refresh(); }
         },
-        onName: p => { const h = tr.hops.find(x => x && x.ip === p.ip); if (!h) return; if (p.name) { h.host = p.name; h.noName = false; } else { h.host = h.ip; h.noName = true; } h.nameDone = true; if (h.geoDone) h.resolved = true; if (isActive(tr)) refresh(); },
-        onDone: p => { tr.reached = !!p.reached; finish(); },
+        onName: p => { const h = tr.hops.find(x => x && x.ip === p.ip); if (!h) return; if (p.name) { h.host = p.name; h.noName = false; const hk = hintPlace(p.name); if (hk) { h.place = hk; h.hinted = true; settleLive(tr); } } else { h.host = h.ip; h.noName = true; } h.nameDone = true; if (h.geoDone) h.resolved = true; if (isActive(tr)) refresh(); },
+        onDone: p => { tr.reached = !!p.reached; tr.gaveUp = !!p.gave_up; finish(); },
         onError: msg => { tr.liveError = msg; finish(); }
       }, { maxHops: 30, waitMs: 1500 });
     });
@@ -2323,6 +2341,8 @@ const App = (() => {
     const until = Date.now() + 6000;
     while (tr.hops.some(h => !h.noreply && !h.resolved) && Date.now() < until) { await sleep(90, tok); if (tok.cancelled) return; }
     tr.hops.forEach(h => { if (!h.resolved) { h.resolved = true; if (!h.nameDone) h.noName = true; } });
+    // A destination that drops probes never answers, so the tool runs on printing silence: keep the route, drop the tail.
+    if (!tr.reached) { let n = tr.hops.length; while (n > 0 && tr.hops[n - 1].noreply) n--; if (n > 0 && n < tr.hops.length) { tr.trailingSilent = tr.hops.length - n; tr.hops.length = n; tr.revealed = n; if (tr.sel >= n) tr.sel = n - 1; } }
     settleLive(tr); LIVE.release(tr.liveId);
     tr.status = 'done'; tr.tok = null; remember(tr, 'done'); recordRun(tr); if (state.autoKeep) setKeep(tr, true);
     if (isActive(tr)) { Sound.play('trace'); setStatus(statusFor(tr)); refresh(); } else { renderTabs(); if (state.home) renderHome(true); }
