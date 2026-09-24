@@ -2133,6 +2133,9 @@ const App = (() => {
     const xs = $$('.ping-x span', box); xs[0].textContent = h.log.length ? clock(h.log[0].t) : ''; xs[1].textContent = h.log.length ? clock(h.log[h.log.length - 1].t) : '';
     $$('[data-ptab]', box).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ptab === state.ptab)));
     const log = $('.ping-log', box), note = $('.ping-logbar span', box);
+    // Rebuilding the rows empties the box for an instant, which snaps its scroll to the top. Put it back afterwards,
+    // moved down by the rows that arrived, so whatever was under the pointer stays there while probing runs.
+    const keepTop = log.scrollTop, prevBase = +(log.dataset.base || 0);
     if (state.ptab === 'drops') {
       note.textContent = st.runs.length ? `${st.runs.length} drop${st.runs.length === 1 ? '' : 's'}, newest first` : '';
       log.innerHTML = st.runs.length ? `<table><thead><tr><th scope="col">Started</th><th scope="col">Back at</th><th scope="col">Lasted</th><th scope="col" class="num">Probes lost</th></tr></thead><tbody>` +
@@ -2142,7 +2145,10 @@ const App = (() => {
       const rows = h.log.slice(-400).reverse(), base = h.log.length;
       note.textContent = base > 400 ? `Newest 400 of ${base.toLocaleString('en-US')}` : 'Newest first';
       log.innerHTML = `<table><thead><tr><th scope="col" class="num">Probe</th><th scope="col">Time</th><th scope="col" class="num">Round trip</th></tr></thead><tbody>` + rows.map((e, k) => `<tr data-n="${base - k}"><td class="num">${base - k}</td><td>${clock(e.t)}</td><td class="num${e.v == null ? ' lost' : ''}">${e.v == null ? 'Lost' : fmt(e.v) + ' ms'}</td></tr>`).join('') + '</tbody></table>';
+      log.dataset.base = base;
+      if (keepTop > 0) { const row = $('tbody tr', log), added = prevBase ? Math.max(0, base - prevBase) : 0; log.scrollTop = keepTop + added * (row ? row.offsetHeight : 0); }
     }
+    if (state.ptab === 'drops' && keepTop > 0) log.scrollTop = keepTop;
     if (pinT != null) { const k = placeCursor(h, pinT, true); if (k != null) { const row = state.ptab === 'drops' ? null : $(`tr[data-n="${k + 1}"]`, log); if (row) row.classList.add('hit'); } }
   }
 
