@@ -28,15 +28,17 @@ Every push to `main` builds all three platforms in GitHub Actions; tagged releas
 
 ## How it traces
 
-Hopscotch does not send its own probes yet. Raw ICMP sockets need administrator rights on most systems, while the traceroute tools that ship with every OS already have what they need:
+On Linux, Hopscotch sends its own probes and needs no extra rights: UDP datagrams with a rising TTL, reading the ICMP answers off the socket the way unprivileged `traceroute` does. When a destination drops UDP (many web servers do), a TCP handshake on port 443 shows whether it is up and how many hops away it is, so the trace ends at the host instead of trailing off into silence. Continuous probing uses ICMP echo over a datagram socket where the system allows it (`net.ipv4.ping_group_range`, open on most distributions) and the `ping` tool otherwise. Settings has a switch back to the system traceroute.
+
+Windows and macOS still run the tools that ship with the OS, which already have the rights they need:
 
 | OS | Tool | Needs |
 | --- | --- | --- |
 | Windows | `tracert -d` | nothing; it uses the Windows ICMP API |
 | macOS | `/usr/sbin/traceroute -n` | nothing; it is setuid root |
-| Linux | `traceroute -n` (or `tracepath -n`) | the `traceroute` package (works unprivileged over UDP) or `iputils` for tracepath |
+| Linux (fallback) | `traceroute -n` (or `tracepath -n`) | the `traceroute` package or `iputils` for tracepath |
 
-Hops stream in as the tool prints them. Continuous probing uses the system `ping` the same way. A native probe engine is the planned next step; see [BACKEND.md](BACKEND.md).
+Hops stream in as they answer. Native probing for the other two platforms is next; see [BACKEND.md](BACKEND.md).
 
 ## Building
 

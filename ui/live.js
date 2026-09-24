@@ -35,7 +35,7 @@
         else if (p.kind === 'error') { cb.onError && cb.onError(p.message); }
       });
       nameHandlers.set(id, p => cb.onName && cb.onName(p));
-      ready.then(() => invoke('start_trace', { id, target, maxHops: opts.maxHops || 30, waitMs: opts.waitMs || 1500 })).catch(e => cb.onError && cb.onError(String(e)));
+      ready.then(() => invoke('start_trace', { id, target, maxHops: opts.maxHops || 30, waitMs: opts.waitMs || 1500, engine: opts.engine || 'native' })).catch(e => cb.onError && cb.onError(String(e)));
       return () => { traceHandlers.delete(id); nameHandlers.delete(id); invoke('cancel_trace', { id }).catch(() => {}); };
     },
     /* names keep arriving after Done, so a trace releases its handlers itself when it is finished with them */

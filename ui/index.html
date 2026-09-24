@@ -715,6 +715,10 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
       <label class="set-row">Keep the list under the map<span class="switch"><input type="checkbox" id="setDock"><span class="track" aria-hidden="true"></span></span></label>
       <label class="set-row">Show the details pane<span class="switch"><input type="checkbox" id="setInfo"><span class="track" aria-hidden="true"></span></span></label>
     </section>
+    <section><h3>Tracing</h3>
+      <label class="set-row">Trace with<select id="setEngine"><option value="native">Hopscotch's own probes</option><option value="tool">The system traceroute tool</option></select></label>
+      <p class="set-hint">Its own probes need no extra rights and can tell when a destination that ignores traceroute is still there. Built in on Linux so far; Windows and macOS use the system tool either way.</p>
+    </section>
     <section><h3>Where you are</h3>
       <label class="set-row">Home city<select id="setHome"></select></label>
       <label class="set-row">Network I'm on<select id="setNet"></select></label>
@@ -1211,7 +1215,7 @@ const state = {
   labels: store.get('labels', true), borders: store.get('borders', true), privacy: store.get('privacy', false),
   every: store.get('every', 1), pingSound: store.get('pingSound', false), ptab: 'drops',
   dock: store.get('dock', true), dockH: store.get('dockH', 0), regOpen: store.get('regOpen', true),
-  startup: store.get('startup', 'home'), openIn: store.get('openIn', 'map'), units: store.get('units', 'km'),
+  startup: store.get('startup', 'home'), openIn: store.get('openIn', 'map'), units: store.get('units', 'km'), engine: store.get('engine', 'native'),
   autoKeep: store.get('autoKeep', false), remember: store.get('remember', true), recordNet: store.get('recordNet', true),
   network: store.get('network', 'home'), skin: store.get('skin', 'periwinkle'), q: '', cmp: {},
   sort: { home: null, hops: null, runs: null, cmp: null }, runsOpen: store.get('runsOpen', true), confirmForget: null, confirmRun: null,
@@ -2339,7 +2343,7 @@ const App = (() => {
         onName: p => { const h = tr.hops.find(x => x && x.ip === p.ip); if (!h) return; if (p.name) { h.host = p.name; h.noName = false; const hk = hintPlace(p.name); if (hk) { h.place = hk; h.hinted = true; settleLive(tr); } } else { h.host = h.ip; h.noName = true; } h.nameDone = true; if (h.geoDone) h.resolved = true; if (isActive(tr)) refresh(); },
         onDone: p => { tr.reached = !!p.reached; tr.gaveUp = !!p.gave_up; finish(); },
         onError: msg => { tr.liveError = msg; finish(); }
-      }, { maxHops: 30, waitMs: 1500 });
+      }, { maxHops: 30, waitMs: 1500, engine: state.engine });
     });
     if (tok.cancelled) return;
     if (!tr.hops.length) { tr.status = 'failed'; tr.fail = 'tool'; tr.failMsg = tr.liveError || 'The traceroute tool printed nothing.'; tr.tok = null; LIVE.release(tr.liveId); showMsg(tr.failMsg); Sound.play('failure'); setStatus(statusFor(tr)); refresh(); return; }
@@ -2349,6 +2353,8 @@ const App = (() => {
     tr.hops.forEach(h => { if (!h.resolved) { h.resolved = true; if (!h.nameDone) h.noName = true; } });
     // A destination that drops probes never answers, so the tool runs on printing silence: keep the route, drop the tail.
     if (!tr.reached) { let n = tr.hops.length; while (n > 0 && tr.hops[n - 1].noreply) n--; if (n > 0 && n < tr.hops.length) { tr.trailingSilent = tr.hops.length - n; tr.hops.length = n; tr.revealed = n; if (tr.sel >= n) tr.sel = n - 1; } }
+    // the destination may turn out to sit inside a run of silent hops (found by handshake): nothing lies beyond it
+    else { const d = tr.hops.map(h => !!h.dest).lastIndexOf(true); if (d >= 0 && d < tr.hops.length - 1) { tr.hops.length = d + 1; tr.revealed = d + 1; if (tr.sel > d) tr.sel = d; } }
     settleLive(tr); LIVE.release(tr.liveId);
     tr.status = 'done'; tr.tok = null; remember(tr, 'done'); recordRun(tr); if (state.autoKeep) setKeep(tr, true);
     if (isActive(tr)) { Sound.play('trace'); setStatus(statusFor(tr)); refresh(); } else { renderTabs(); if (state.home) renderHome(true); }
@@ -2620,6 +2626,7 @@ const App = (() => {
   }
   const PREFS = {
     setStart: ['home', () => state.startup, v => { state.startup = v; store.set('startup', v); }],
+    setEngine: ['native', () => state.engine, v => { state.engine = v === 'tool' ? 'tool' : 'native'; store.set('engine', state.engine); }],
     setOpenIn: ['map', () => state.openIn === 'list' ? 'map' : state.openIn, v => { state.openIn = v; store.set('openIn', v); }],
     setDock: [true, () => state.dock, v => { state.dock = v; store.set('dock', v); applyDock(); }],
     setInfo: [true, () => state.infoOpen, v => setInfo(v)],

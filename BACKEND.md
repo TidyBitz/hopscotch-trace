@@ -41,11 +41,14 @@ The core crate (`core/`) is plain Rust with no Tauri dependency, so it can be te
 
 Shelling out to the tools gives working traces on every platform on day one, with zero rights prompts. The costs are: parsing text (the parsers in `core/src/parse.rs` are tested against real output), one process per probe when probing continuously, and a dependency on `traceroute` being installed on Linux.
 
-## Native probing: the plan for 0.2
+## Native probing
+
+**Linux is done** (`core/src/native.rs`, chosen by `trace::run_auto`): a UDP socket per probe with `IP_TTL` and `IP_RECVERR`, the ICMP answer read off the error queue with `MSG_ERRQUEUE` and the router's address taken from `SO_EE_OFFENDER`. Probes for one TTL run in parallel on scoped threads. When the destination never answers UDP, `native::tcp_distance` sends a SYN to port 443 with a full TTL (a handshake or a reset means the host is up; the kernel reports a router's time-exceeded only as `EHOSTUNREACH`, without the address), then binary-searches the TTL to find the distance, and the trace ends at the destination with handshake round trips. Continuous probing sends ICMP echo over a datagram ICMP socket (`ping_icmp`) and falls back to the `ping` tool when the sysctl refuses the socket. `start_trace` takes `engine: "native" | "tool"`, and `platform()` reports which one a build will use.
+
+The plan for the rest:
 
 1. **Windows** — call `IcmpSendEcho2Ex` from `Icmp.dll` via the `windows-sys` crate with `IP_OPTION_INFORMATION.Ttl` set per hop. Unprivileged, no console, and it returns the responding address and the round trip directly. This replaces both `tracert` and `ping` on Windows.
-2. **Linux** — UDP socket per probe with `IP_RECVERR` and `IP_TTL`, read the error queue (`MSG_ERRQUEUE`) for the ICMP that comes back. Unprivileged. For continuous probing of a hop, the same trick with the hop's TTL gives a "ping" even to routers that ignore echo requests.
-3. **macOS** — keep the setuid `traceroute` for the route (it is reliable and always present), but do continuous probing with an ICMP `SOCK_DGRAM` socket, which is unprivileged on macOS.
-4. Put all three behind one `trait Prober { fn probe(ip, ttl, timeout) -> Result<Reply> }` in `core/src/probe/`, keep the tool-based path as the fallback, and let `platform()` report which engine is in use so the UI can say so.
+2. **macOS** — keep the setuid `traceroute` for the route (it is reliable and always present), but do continuous probing with an ICMP `SOCK_DGRAM` socket, which is unprivileged on macOS.
+3. Keep the tool-based path as the fallback everywhere, so a build that cannot open its sockets still traces.
 
 Other candidates: geolocation via a bundled MaxMind GeoLite2 database (offline, ~60 MB, needs an account and their license text), IPv6 traces (the parsers already handle v6 addresses; the tools need `-6`), MTR-style per-hop statistics from a single stream of probes, and reading the Wi-Fi link speed on macOS (`system_profiler SPAirPortDataType`, slow) only on demand.

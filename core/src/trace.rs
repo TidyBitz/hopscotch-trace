@@ -1,11 +1,10 @@
-//! Running the system traceroute tool and streaming its hops.
+//! Tracing a route and streaming its hops, as events.
 //!
-//! Hopscotch does not send its own probes in v0.1: raw ICMP sockets need
-//! administrator rights on most systems, while the traceroute tools that ship
-//! with every OS already have the rights they need (`tracert` uses the Windows
-//! ICMP API, macOS's `traceroute` is setuid, Linux's works unprivileged over
-//! UDP). So we run the tool, read its output line by line, and turn each line
-//! into an event. BACKEND.md discusses a native implementation for later.
+//! On Linux the probes are our own (see `native`): UDP datagrams with a rising
+//! TTL, and a TCP handshake to find a destination that drops UDP. Elsewhere
+//! we run the system tool (`tracert` uses the Windows ICMP API, macOS's
+//! `traceroute` is setuid), read its output line by line, and turn each line
+//! into an event; `run_auto` picks. BACKEND.md has the plan for the rest.
 
 use crate::parse::{self, Flavor, HopLine};
 use crate::process;
@@ -247,10 +246,146 @@ pub fn run<F: FnMut(TraceEvent)>(target: &str, opts: &TraceOpts, cancel: &Cancel
     emit(TraceEvent::Done { reached, hops, gave_up });
 }
 
+/// Which engine `run_auto` will use on this machine.
+pub fn engine_name(prefer_native: bool) -> &'static str {
+    #[cfg(target_os = "linux")]
+    if prefer_native && crate::native::available() {
+        return "native";
+    }
+    let _ = prefer_native;
+    "tool"
+}
+
+#[cfg(target_os = "linux")]
+fn native_dest(target: &str, prefer_native: bool) -> Option<std::net::Ipv4Addr> {
+    if !prefer_native || !crate::native::available() {
+        return None;
+    }
+    crate::dns::resolve(target).ok()?.into_iter().find_map(|s| s.parse().ok())
+}
+
+/// Trace with our own probes where they work (Linux, an IPv4 target), otherwise with the system tool.
+pub fn run_auto<F: FnMut(TraceEvent)>(target: &str, opts: &TraceOpts, cancel: &Cancel, prefer_native: bool, emit: F) {
+    #[cfg(target_os = "linux")]
+    if let Some(dest) = native_dest(target, prefer_native) {
+        return run_native(dest, opts, cancel, emit);
+    }
+    let _ = prefer_native;
+    run(target, opts, cancel, emit)
+}
+
+#[cfg(target_os = "linux")]
+fn push_addr(line: &mut HopLine, a: std::net::Ipv4Addr) {
+    let s = a.to_string();
+    if !line.addrs.contains(&s) {
+        line.addrs.push(s);
+    }
+}
+
+/// Trace with native probes: `queries` UDP probes per TTL in parallel, then,
+/// when the destination never answers UDP, a TCP handshake on 443 to prove it
+/// is up and a search over the TTL to find how far away it is.
+#[cfg(target_os = "linux")]
+pub fn run_native<F: FnMut(TraceEvent)>(dest: std::net::Ipv4Addr, opts: &TraceOpts, cancel: &Cancel, mut emit: F) {
+    use crate::native::{self, Reply};
+    use std::time::Duration;
+    let timeout = Duration::from_millis(opts.wait_ms.max(100) as u64);
+    let queries = opts.queries.clamp(1, 8) as usize;
+    let max_hops = opts.max_hops.max(1);
+    emit(TraceEvent::Started { tool: "native".into(), dest: Some(dest.to_string()) });
+    let (mut hops, mut answered, mut silent_run, mut reached, mut gave_up) = (0u8, false, 0u8, false, false);
+    for ttl in 1..=max_hops {
+        if cancel.is_cancelled() {
+            return;
+        }
+        let replies: Vec<std::io::Result<Reply>> = std::thread::scope(|s| {
+            let handles: Vec<_> = (0..queries)
+                .map(|q| {
+                    // one port per probe, the way traceroute numbers them
+                    let port = 33434u16.wrapping_add((ttl as u16).wrapping_sub(1).wrapping_mul(queries as u16)).wrapping_add(q as u16);
+                    s.spawn(move || native::probe_udp(dest, ttl, port, timeout))
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err(std::io::Error::other("probe thread panicked")))).collect()
+        });
+        if cancel.is_cancelled() {
+            return;
+        }
+        let mut line = HopLine { hop: ttl, ..Default::default() };
+        let (mut here, mut errors) = (false, 0);
+        for r in replies {
+            match r {
+                Ok(Reply::Expired { from, rtt }) => {
+                    if let Some(a) = from {
+                        push_addr(&mut line, a);
+                    }
+                    line.rtts.push(Some(rtt));
+                }
+                Ok(Reply::Reached { from, rtt }) => {
+                    push_addr(&mut line, from);
+                    line.rtts.push(Some(rtt));
+                    here = true;
+                }
+                Ok(Reply::Unreachable { from, rtt, note }) => {
+                    if let Some(a) = from {
+                        push_addr(&mut line, a);
+                        if a == dest {
+                            here = true;
+                        }
+                    }
+                    line.rtts.push(Some(rtt));
+                    line.note = Some(note);
+                }
+                Ok(Reply::Silent) => line.rtts.push(None),
+                Err(e) => {
+                    errors += 1;
+                    line.rtts.push(None);
+                    if ttl == 1 && errors == queries {
+                        emit(TraceEvent::Error { message: friendly(&e.to_string()) });
+                        return;
+                    }
+                }
+            }
+        }
+        hops = hops.max(ttl);
+        if line.addrs.is_empty() {
+            silent_run = silent_run.saturating_add(1);
+        } else {
+            answered = true;
+            silent_run = 0;
+        }
+        emit(TraceEvent::Hop(line));
+        if here {
+            reached = true;
+            break;
+        }
+        if answered && opts.give_up_after > 0 && silent_run >= opts.give_up_after {
+            gave_up = true;
+            break;
+        }
+    }
+    if !reached && answered && !cancel.is_cancelled() {
+        // The destination drops UDP. A handshake on 443 shows whether it is up at all, and how far away.
+        let known = hops.saturating_sub(silent_run);
+        if let Some((dist, rtts)) = native::tcp_distance(dest, 443, known, max_hops, timeout) {
+            for t in (hops + 1)..dist {
+                emit(TraceEvent::Hop(HopLine { hop: t, rtts: vec![None; queries], ..Default::default() }));
+            }
+            emit(TraceEvent::Hop(HopLine { hop: dist, addrs: vec![dest.to_string()], rtts, note: Some("tcp/443".into()) }));
+            hops = dist;
+            reached = true;
+            gave_up = false;
+        }
+    }
+    emit(TraceEvent::Done { reached, hops, gave_up });
+}
+
 /// Turn the tool's stderr into something a person can act on.
 fn friendly(err: &str) -> String {
     let e = err.to_lowercase();
-    if e.contains("unknown host") || e.contains("name or service not known") || e.contains("could not resolve") || e.contains("cannot resolve") || e.contains("temporary failure in name resolution") {
+    if e.contains("network is unreachable") || e.contains("network unreachable") {
+        "No route to that address. Is the network up?".into()
+    } else if e.contains("unknown host") || e.contains("name or service not known") || e.contains("could not resolve") || e.contains("cannot resolve") || e.contains("temporary failure in name resolution") {
         "That name didn't resolve to an address.".into()
     } else if e.contains("operation not permitted") || e.contains("permission denied") || e.contains("must be root") {
         "The traceroute tool needs more rights than it has. On Linux, install the traceroute package (it works without root) rather than relying on a raw-socket build.".into()

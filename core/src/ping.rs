@@ -1,9 +1,9 @@
-//! Continuous probing of every hop, using the system `ping`.
+//! Continuous probing of every hop.
 //!
-//! One short-lived `ping` per hop per tick is portable and needs no rights.
-//! It costs a process spawn per probe, which is fine at one probe a second for
-//! a dozen hops; a native ICMP implementation is the obvious upgrade
-//! (see BACKEND.md).
+//! On Linux each probe is an ICMP echo over a datagram socket (see `native`),
+//! which every user may open on most distributions. Elsewhere, and where that
+//! socket is refused, one short-lived `ping` per hop per tick does the job:
+//! portable, no rights needed, a process spawn per probe.
 
 use crate::process;
 use serde::Serialize;
@@ -26,6 +26,13 @@ fn now_ms() -> u64 {
 
 /// Send one echo request and wait up to `timeout_ms` for the answer.
 pub fn ping_once(ip: &str, timeout_ms: u32) -> Option<f64> {
+    #[cfg(target_os = "linux")]
+    if let Ok(v4) = ip.parse::<std::net::Ipv4Addr>() {
+        if let Ok(r) = crate::native::ping_icmp(v4, Duration::from_millis(timeout_ms as u64)) {
+            return r;
+        }
+        // the sysctl does not allow ICMP sockets here: the ping tool it is
+    }
     let mut cmd = process::quiet("ping");
     if cfg!(windows) {
         cmd.args(["-n", "1", "-w", &timeout_ms.to_string(), ip]);
