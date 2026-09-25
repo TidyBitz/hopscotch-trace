@@ -169,6 +169,7 @@ async fn net_info() -> netinfo::NetInfo {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Registry::default())
         .invoke_handler(tauri::generate_handler![
             platform, resolve, reverse, start_trace, cancel_trace, start_probe, stop_probe, geo_lookup, geo_self, rdap_ip, rdap_domain, net_info, save_text

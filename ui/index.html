@@ -521,6 +521,8 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
 .status{display:flex;align-items:center;gap:16px;min-height:34px;padding:4px 14px;font-size:13px;color:var(--ink-2)}
 .status-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .status-right{display:flex;align-items:center;gap:16px;white-space:nowrap}
+.status .ver{color:var(--ink-3);text-decoration:none;border-bottom:1px dotted var(--ink-3);font-variant-numeric:tabular-nums}
+.status .ver:hover,.status .ver:focus-visible{color:var(--ink);border-bottom-color:var(--ink)}
 .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600}
 .switch input{position:absolute;opacity:0}
 .switch .track{width:30px;height:18px;border-radius:9px;background:var(--line);position:relative;transition:background .15s}
@@ -701,6 +703,7 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
       <span class="status-text" id="status" role="status" aria-live="polite"></span>
       <span class="status-right">
         <span id="summary"></span>
+        <a class="ver" id="verLink" href="https://github.com/TidyBitz/hopscotch-trace/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="What changed in this version">v0.2.0</a>
       </span>
     </div>
   </footer>
@@ -2676,7 +2679,9 @@ const App = (() => {
     if (LIVE) {
       const sim = $('.sim'); sim.firstChild.textContent = 'Live route'; $('.sim-tip').textContent = 'Real probes, sent from this computer with the system\'s traceroute tool. Places come from an online lookup and are estimates; addresses set aside for private networks never leave this machine.';
       const hs = $('#setHome').closest('.set-row'); if (hs) hs.hidden = true;
-      LIVE.platform().then(p => { if (p && p.tool_error) showMsg(p.tool_error); }).catch(() => {});
+      LIVE.platform().then(p => { if (p && p.tool_error) showMsg(p.tool_error); if (p && p.version) $('#verLink').textContent = 'v' + p.version; }).catch(() => {});
+      // links leave the webview for the browser
+      $('#verLink').addEventListener('click', e => { if (LIVE.openUrl) { e.preventDefault(); LIVE.openUrl(e.currentTarget.href).catch(() => {}); } });
       if (!liveHome) LIVE.geoSelf().then(g => { const k = liveCity(g); if (k) { liveHome = k; store.set('liveHome', k); if (state.home) renderHome(); } }).catch(() => {});
     }
     // tabs are for this session only: a fresh open starts with none, and the Home list carries the past

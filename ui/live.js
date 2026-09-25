@@ -45,6 +45,8 @@
     rdapIp: ip => invoke('rdap_ip', { ip }),
     rdapDomain: name => invoke('rdap_domain', { name }),
     netInfo: () => invoke('net_info'),
+    /* open a web address in the person's browser (the opener plugin; only http(s) is allowed) */
+    openUrl: url => invoke('plugin:opener|open_url', { url }),
     /* save(name, text) → the path written, or null when the person cancelled */
     async save(name, text) {
       const ext = (name.split('.').pop() || 'txt').toLowerCase();
