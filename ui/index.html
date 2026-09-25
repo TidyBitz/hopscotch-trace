@@ -494,7 +494,10 @@ tr.asking td{background:var(--sel)}
 
 /* ---------- footer: tabs + status ---------- */
 .foot{background:var(--surface);border-top:1px solid var(--line)}
-.tabs{display:flex;align-items:flex-end;gap:2px;padding:0 10px;overflow-x:auto;background:var(--surface-2);border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabbar{display:flex;align-items:stretch;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.tabs{flex:1;min-width:0;display:flex;align-items:flex-end;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none}
+.tab-arr{flex:none;width:28px;border:0;padding:0;background:var(--surface-2);color:var(--ink-2);cursor:pointer;font-size:20px;line-height:1}
+.tab-arr:hover,.tab-arr:focus-visible{color:var(--ink);background:var(--surface)}
 .tabs::-webkit-scrollbar{display:none}
 .tab{flex:none;display:flex;align-items:center;gap:0;margin-top:5px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--ink-2)}
 .tab > button{border:0;background:none}
@@ -698,7 +701,11 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
   </main>
 
   <footer class="foot">
-    <div class="tabs" id="tabs" role="tablist" aria-label="Traces"></div>
+    <div class="tabbar">
+      <button type="button" class="tab-arr" id="tabPrev" hidden aria-label="Earlier tabs" title="Earlier tabs">&lsaquo;</button>
+      <div class="tabs" id="tabs" role="tablist" aria-label="Traces"></div>
+      <button type="button" class="tab-arr" id="tabNext" hidden aria-label="Later tabs" title="Later tabs">&rsaquo;</button>
+    </div>
     <div class="status">
       <span class="status-text" id="status" role="status" aria-live="polite"></span>
       <span class="status-right">
@@ -1695,6 +1702,13 @@ const App = (() => {
       return `<div class="tab${i === state.active && !state.home ? ' on' : ''}"><button type="button" class="tab-main" role="tab" aria-selected="${i === state.active}" data-tab="${i}"><span class="dot ${dot}" title="${word}"></span>${esc(t.target)}</button><button type="button" class="tab-x" data-close="${i}" aria-label="Close ${esc(t.target)}" title="Close">${ICON.x}</button></div>`;
     }).join('') + `<button type="button" class="tab-new" id="newTab" aria-label="Trace somewhere new" title="Trace somewhere new">${ICON.plus}</button>`;
     const on = $('.tab.on', els.tabs); if (on) { const b = els.tabs.getBoundingClientRect(), r = on.getBoundingClientRect(); if (r.left < b.left) els.tabs.scrollLeft += r.left - b.left - 12; else if (r.right > b.right) els.tabs.scrollLeft += r.right - b.right + 44; }
+    updateTabArrows();
+  }
+  // the strip scrolls sideways without a scrollbar: arrows appear at whichever end has more tabs
+  function updateTabArrows() {
+    const t = els.tabs, over = t.scrollWidth > t.clientWidth + 1;
+    $('#tabPrev').hidden = !over || t.scrollLeft <= 0;
+    $('#tabNext').hidden = !over || t.scrollLeft + t.clientWidth >= t.scrollWidth - 1;
   }
   function renderSummary() {
     const tr = cur(); if (!tr || !tr.revealed || state.home) { els.summary.textContent = ''; return; }
@@ -1998,7 +2012,7 @@ const App = (() => {
     if (at < 0) { const tr = makeTrace(target); if (tr.fail) tr.status = 'failed'; else fillInstantly(tr); state.tabs.push(tr); at = state.tabs.length - 1; at = trimTabs(at); }
     setView(view || state.openIn); activate(at); if (again) { els.target.value = target; go(); }
   }
-  function trimTabs(keep) { while (state.tabs.length > 8) { const drop = state.tabs.findIndex((x, k) => k !== keep && x.status !== 'running'); if (drop < 0) break; state.tabs.splice(drop, 1); if (drop < keep) keep--; } return keep; }
+  function trimTabs(keep) { while (state.tabs.length > 24) { const drop = state.tabs.findIndex((x, k) => k !== keep && x.status !== 'running'); if (drop < 0) break; state.tabs.splice(drop, 1); if (drop < keep) keep--; } return keep; }
 
   /* ---------- exports: a CSV for spreadsheets, or a printable report for a PDF ---------- */
   const csvCell = v => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
@@ -2280,12 +2294,14 @@ const App = (() => {
     if (tr) { els.target.value = tr.target; setStatus(statusFor(tr)); }
     refresh(true); MapView.refit(true);
   }
+  const NOTE_WORDS = { '!H': 'the host is unreachable', '!N': 'the network is unreachable', '!X': 'the way is blocked by a filter', '!P': 'the protocol is unreachable', '!F': 'the packet would need fragmenting', '!S': 'source routing failed' };
   function statusFor(tr) {
     if (tr.fail === 'tool') return tr.failMsg || `The traceroute tool couldn't run.`;
     if (tr.fail) return `Couldn't find an address for ${tr.target}.`;
     if (tr.status === 'running') return `Tracing the route to ${tr.target}…`;
     if (tr.keep) return `Probing every hop of ${tr.target} every ${state.every === 1 ? 'second' : state.every + ' seconds'}.`;
     if (tr.status === 'stopped') return `Stopped after hop ${tr.revealed}.`;
+    if (tr.live && tr.reached === false && tr.hops.length && tr.hops[tr.hops.length - 1].note && !tr.hops[tr.hops.length - 1].noreply) { const h = tr.hops[tr.hops.length - 1]; return `${tr.target} can't be reached from here: hop ${tr.hops.length}${h.ip ? ` (${h.ip})` : ''} answered that ${NOTE_WORDS[h.note] || h.note}.`; }
     if (tr.live && tr.reached === false && tr.hops.length) return `Trace ended at hop ${tr.hops.length}: ${tr.target} didn't answer${tr.trailingSilent ? `, and neither did the ${tr.trailingSilent} hop${tr.trailingSilent === 1 ? '' : 's'} after that` : ''}. The route stops at the last router that did.`;
     return `Trace complete. ${tr.hops.length} hops to ${tr.target}.`;
   }
@@ -2592,6 +2608,10 @@ const App = (() => {
       if (a.dataset.act === 'sound') { state.pingSound = a.checked; store.set('pingSound', a.checked); if (a.checked) Sound.play('timeout'); }
     });
 
+    els.tabs.addEventListener('scroll', updateTabArrows, { passive: true }); addEventListener('resize', updateTabArrows);
+    els.tabs.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { els.tabs.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+    $('#tabPrev').addEventListener('click', () => els.tabs.scrollBy({ left: -Math.max(160, els.tabs.clientWidth * .6), behavior: 'smooth' }));
+    $('#tabNext').addEventListener('click', () => els.tabs.scrollBy({ left: Math.max(160, els.tabs.clientWidth * .6), behavior: 'smooth' }));
     els.tabs.addEventListener('click', e => {
       const x = e.target.closest('[data-close]'); if (x) return closeTab(+x.dataset.close);
       const t = e.target.closest('[data-tab]'); if (t) return activate(+t.dataset.tab);

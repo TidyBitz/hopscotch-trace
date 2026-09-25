@@ -294,6 +294,7 @@ pub fn run_native<F: FnMut(TraceEvent)>(dest: std::net::Ipv4Addr, opts: &TraceOp
     let max_hops = opts.max_hops.max(1);
     emit(TraceEvent::Started { tool: "native".into(), dest: Some(dest.to_string()) });
     let (mut hops, mut answered, mut silent_run, mut reached, mut gave_up) = (0u8, false, 0u8, false, false);
+    let mut dead_end = false;
     for ttl in 1..=max_hops {
         if cancel.is_cancelled() {
             return;
@@ -312,12 +313,16 @@ pub fn run_native<F: FnMut(TraceEvent)>(dest: std::net::Ipv4Addr, opts: &TraceOp
             return;
         }
         let mut line = HopLine { hop: ttl, ..Default::default() };
-        let (mut here, mut errors) = (false, 0);
+        let (mut here, mut errors, mut unreachable) = (false, 0, 0);
         for r in replies {
             match r {
                 Ok(Reply::Expired { from, rtt }) => {
                     if let Some(a) = from {
                         push_addr(&mut line, a);
+                        // a load balancer or host that lets the TTL run out on the way in still answers from the destination's address
+                        if a == dest {
+                            here = true;
+                        }
                     }
                     line.rtts.push(Some(rtt));
                 }
@@ -335,6 +340,7 @@ pub fn run_native<F: FnMut(TraceEvent)>(dest: std::net::Ipv4Addr, opts: &TraceOp
                     }
                     line.rtts.push(Some(rtt));
                     line.note = Some(note);
+                    unreachable += 1;
                 }
                 Ok(Reply::Silent) => line.rtts.push(None),
                 Err(e) => {
@@ -359,12 +365,17 @@ pub fn run_native<F: FnMut(TraceEvent)>(dest: std::net::Ipv4Addr, opts: &TraceOp
             reached = true;
             break;
         }
+        // "host unreachable" and friends from most probes: this router will never pass us on, as traceroute also concludes
+        if unreachable > 0 && unreachable >= queries.saturating_sub(1).max(1) {
+            dead_end = true;
+            break;
+        }
         if answered && opts.give_up_after > 0 && silent_run >= opts.give_up_after {
             gave_up = true;
             break;
         }
     }
-    if !reached && answered && !cancel.is_cancelled() {
+    if !reached && !dead_end && answered && !cancel.is_cancelled() {
         // The destination drops UDP. A handshake on 443 shows whether it is up at all, and how far away.
         let known = hops.saturating_sub(silent_run);
         if let Some((dist, rtts)) = native::tcp_distance(dest, 443, known, max_hops, timeout) {
