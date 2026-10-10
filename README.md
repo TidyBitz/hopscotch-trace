@@ -6,7 +6,7 @@ A visual traceroute for the desktop, in the spirit of the classic NeoTrace: the 
 
 ## Screenshots
 
-A live trace from Denver to a mirror in New Zealand. The map draws the route hop by hop; the table below it keeps the names, places, networks and round trips; the pane on the right has the registration record for the hop you pick.
+A live trace to a mirror in New Zealand. The map draws the route hop by hop; the table below it keeps the names, places, networks and round trips; the pane on the right has the registration record for the hop you pick.
 
 ![A live trace to nz.archive.ubuntu.com drawn across the Pacific, with the hop table and the destination's registration record](docs/screenshots/trace-map.png)
 
@@ -14,13 +14,11 @@ Keep probing: every hop pinged once a second, charted for the hop you choose, wi
 
 ![The Ping view probing every hop of a route, with a chart of one hop's round trips](docs/screenshots/ping-view.png)
 
-Home remembers where you've been, in whichever skin and map style you like: the Classic 2001 colours, green phosphor Cyber, or the modern dark map.
+Home remembers where you've been, here in the Classic 2001 map style.
 
 ![Home in the Classic 2001 map style, with the style picker open](docs/screenshots/home-classic.png)
 
-![Home in the Cyber skin, green phosphor on black](docs/screenshots/home-cyber.webp)
-
-![Home in the modern dark map style](docs/screenshots/home-modern.png)
+More, including Trends and the other skins, in [docs/screenshots.md](docs/screenshots.md).
 
 ## What it does
 
