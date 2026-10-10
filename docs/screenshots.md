@@ -1,7 +1,3 @@
-# Hopscotch in pictures
-
-All taken on a Fedora desktop from the 0.2 AppImage. The first hops are hidden with the *Hide my first hops* switch, which keeps your router and neighbourhood out of screenshots.
-
 ## Tracing
 
 A live trace across the Pacific, drawn as it arrives. The table keeps names, places, networks and round trips; the pane on the right holds the registration record for the hop you pick.
