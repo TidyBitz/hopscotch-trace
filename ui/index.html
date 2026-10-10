@@ -494,7 +494,10 @@ tr.asking td{background:var(--sel)}
 
 /* ---------- footer: tabs + status ---------- */
 .foot{background:var(--surface);border-top:1px solid var(--line)}
-.tabs{display:flex;align-items:flex-end;gap:2px;padding:0 10px;overflow-x:auto;background:var(--surface-2);border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabbar{display:flex;align-items:stretch;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.tabs{flex:1;min-width:0;display:flex;align-items:flex-end;gap:2px;padding:0 10px;overflow-x:auto;scrollbar-width:none}
+.tab-arr{flex:none;width:28px;border:0;padding:0;background:var(--surface-2);color:var(--ink-2);cursor:pointer;font-size:20px;line-height:1}
+.tab-arr:hover,.tab-arr:focus-visible{color:var(--ink);background:var(--surface)}
 .tabs::-webkit-scrollbar{display:none}
 .tab{flex:none;display:flex;align-items:center;gap:0;margin-top:5px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--ink-2)}
 .tab > button{border:0;background:none}
@@ -521,6 +524,8 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
 .status{display:flex;align-items:center;gap:16px;min-height:34px;padding:4px 14px;font-size:13px;color:var(--ink-2)}
 .status-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .status-right{display:flex;align-items:center;gap:16px;white-space:nowrap}
+.status .ver{color:var(--ink-3);text-decoration:none;border-bottom:1px dotted var(--ink-3);font-variant-numeric:tabular-nums}
+.status .ver:hover,.status .ver:focus-visible{color:var(--ink);border-bottom-color:var(--ink)}
 .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600}
 .switch input{position:absolute;opacity:0}
 .switch .track{width:30px;height:18px;border-radius:9px;background:var(--line);position:relative;transition:background .15s}
@@ -696,11 +701,16 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
   </main>
 
   <footer class="foot">
-    <div class="tabs" id="tabs" role="tablist" aria-label="Traces"></div>
+    <div class="tabbar">
+      <button type="button" class="tab-arr" id="tabPrev" hidden aria-label="Earlier tabs" title="Earlier tabs">&lsaquo;</button>
+      <div class="tabs" id="tabs" role="tablist" aria-label="Traces"></div>
+      <button type="button" class="tab-arr" id="tabNext" hidden aria-label="Later tabs" title="Later tabs">&rsaquo;</button>
+    </div>
     <div class="status">
       <span class="status-text" id="status" role="status" aria-live="polite"></span>
       <span class="status-right">
         <span id="summary"></span>
+        <a class="ver" id="verLink" href="https://github.com/TidyBitz/hopscotch-trace/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="What changed in this version">v0.2.0</a>
       </span>
     </div>
   </footer>
@@ -714,6 +724,10 @@ button.probing.stop:hover{border-color:var(--line);background:var(--surface)} bu
       <label class="set-row">Open traces in<select id="setOpenIn"><option value="map">Map</option><option value="nodes">Nodes</option><option value="ping">Ping</option><option value="runs">Trends</option></select></label>
       <label class="set-row">Keep the list under the map<span class="switch"><input type="checkbox" id="setDock"><span class="track" aria-hidden="true"></span></span></label>
       <label class="set-row">Show the details pane<span class="switch"><input type="checkbox" id="setInfo"><span class="track" aria-hidden="true"></span></span></label>
+    </section>
+    <section><h3>Tracing</h3>
+      <label class="set-row">Trace with<select id="setEngine"><option value="native">Hopscotch's own probes</option><option value="tool">The system traceroute tool</option></select></label>
+      <p class="set-hint">Its own probes need no extra rights and can tell when a destination that ignores traceroute is still there. Built in on Linux so far; Windows and macOS use the system tool either way.</p>
     </section>
     <section><h3>Where you are</h3>
       <label class="set-row">Home city<select id="setHome"></select></label>
@@ -934,7 +948,7 @@ const PRESETS = {
     { c: '@home', net: 'prairie', role: 'core' }, { c: '@home', net: 'edge', role: 'peer' }, { c: '@home', net: 'edge', dest: true, anycast: true }
   ]
 };
-const SUGGESTIONS = ['chinadaily.com.cn', 'mea.gov.in', 'osu.edu', 'google.com', 'u-tokyo.ac.jp', 'sydney.edu.au', 'usp.br', 'uct.ac.za', 'unam.mx', 'kth.se', 'nowhere.invalid'];
+const SUGGESTIONS = LIVE ? [] : ['chinadaily.com.cn', 'mea.gov.in', 'osu.edu', 'google.com', 'u-tokyo.ac.jp', 'sydney.edu.au', 'usp.br', 'uct.ac.za', 'unam.mx', 'kth.se', 'nowhere.invalid'];
 
 const TLD_CITY = { uk: 'lon', de: 'fra', fr: 'par', nl: 'ams', es: 'mad', it: 'mil', se: 'sto', pt: 'lis', ru: 'mow', tr: 'ist', eg: 'cai', ae: 'dxb', in: 'bom', sg: 'sin', hk: 'hkg', tw: 'tpe', cn: 'sha', kr: 'sel', jp: 'tyo', au: 'syd', nz: 'akl', br: 'sao', ar: 'bue', cl: 'scl', co: 'bog', pe: 'lim', mx: 'mex', ca: 'tor', ng: 'los', ke: 'nbo', za: 'jnb' };
 const US_CITIES = ['chi', 'dal', 'den', 'nyc', 'ash', 'atl', 'sea', 'sjc', 'lax', 'mia', 'cmh'];
@@ -1026,9 +1040,26 @@ function settleLive(tr) {
   let prev = null; hs.forEach(h => { if (prev) { const a = CITY[prev.c], b = CITY[h.c]; h.prev = prev.i; h.legKm = prev.c === h.c ? 0 : km([a.lon, a.lat], [b.lon, b.lat]); } else { h.prev = null; h.legKm = 0; } prev = h; });
   buildGeometry(tr);
 }
+// Router names usually carry the place: an airport code (den, lhr, nrt) or a city
+// (denver, frankfurt). That beats an address database, which files CDN and transit
+// addresses under a head office a continent away. Only the host part is read,
+// never the domain, and only codes for cities the map knows.
+const HOST_PLACES = (() => {
+  const m = {};
+  for (const k in CITY_ROWS) { const r = CITY_ROWS[k]; if (!r[5]) continue; m[k] = k; const n = r[0].toLowerCase(); if (/^[a-z]+$/.test(n)) m[n] = k; }
+  Object.assign(m, { lhr: 'lon', lgw: 'lon', jfk: 'nyc', ewr: 'nyc', lga: 'nyc', newyork: 'nyc', ord: 'chi', iad: 'ash', dca: 'ash', dfw: 'dal', sfo: 'sjc', sanjose: 'sjc', losangeles: 'lax', kansascity: 'mci', nrt: 'tyo', hnd: 'tyo', cdg: 'par', yyz: 'tor', gru: 'sao', saopaulo: 'sao', eze: 'bue', buenosaires: 'bue', arn: 'sto', svo: 'mow', dme: 'mow', icn: 'sel', hongkong: 'hkg', capetown: 'cpt', mexicocity: 'mex', newdelhi: 'del' });
+  ['los', 'mil', 'del'].forEach(k => delete m[k]); // too often something else in a name
+  return m;
+})();
+function hintPlace(host) {
+  if (!host || /^[\d.:]+$/.test(host)) return null;
+  const labels = host.toLowerCase().split('.'); if (labels.length < 3) return null;
+  for (const label of labels.slice(0, -2)) for (const t of label.split(/[-_]/)) { const w = t.replace(/\d+$/, ''); if (w.length >= 3 && HOST_PLACES[w]) return HOST_PLACES[w]; }
+  return null;
+}
 function applyGeo(tr, h, g) {
   h.geo = g; if (!g) return;
-  if (g.lat != null) h.place = liveCity(g);
+  if (g.lat != null && !h.hinted) h.place = liveCity(g);
   const nk = liveNet(g); if (nk) h.netKey = nk;
   else if (h.dest) h.netKey = 'dest';
 }
@@ -1176,8 +1207,14 @@ const Sound = (() => {
    }
   };
   let pack = store.get('soundPack', 'chirp'); if (!packs[pack]) pack = 'chirp';
+  let nativeOk = true;
   return {
-    play(name, a, b) { if (!on) return; try { if (ensure()) packs[pack][name](a, b); } catch (e) { /* audio unavailable */ } },
+    play(name, a, b) {
+      if (!on) return;
+      // in the desktop app the shell plays the cue; if it can't (no device), Web Audio takes over from then on
+      if (nativeOk && LIVE && LIVE.playCue) { LIVE.playCue(name, pack, a == null ? 40 : +a, b == null ? 0 : +b, vol).catch(() => { nativeOk = false; }); return; }
+      try { if (ensure()) packs[pack][name](a, b); } catch (e) { /* audio unavailable */ }
+    },
     get pack() { return pack; }, set pack(v) { if (packs[v]) { pack = v; store.set('soundPack', v); } },
     get on() { return on; }, set on(v) { on = !!v; store.set('soundOn', on); if (master) master.gain.value = level(); },
     get vol() { return vol; }, set vol(v) { vol = clamp(+v || 0, 0, 100); store.set('vol', vol); if (master) master.gain.value = level(); }
@@ -1194,7 +1231,7 @@ const state = {
   labels: store.get('labels', true), borders: store.get('borders', true), privacy: store.get('privacy', false),
   every: store.get('every', 1), pingSound: store.get('pingSound', false), ptab: 'drops',
   dock: store.get('dock', true), dockH: store.get('dockH', 0), regOpen: store.get('regOpen', true),
-  startup: store.get('startup', 'home'), openIn: store.get('openIn', 'map'), units: store.get('units', 'km'),
+  startup: store.get('startup', 'home'), openIn: store.get('openIn', 'map'), units: store.get('units', 'km'), engine: store.get('engine', 'native'),
   autoKeep: store.get('autoKeep', false), remember: store.get('remember', true), recordNet: store.get('recordNet', true),
   network: store.get('network', 'home'), skin: store.get('skin', 'periwinkle'), q: '', cmp: {},
   sort: { home: null, hops: null, runs: null, cmp: null }, runsOpen: store.get('runsOpen', true), confirmForget: null, confirmRun: null,
@@ -1671,6 +1708,13 @@ const App = (() => {
       return `<div class="tab${i === state.active && !state.home ? ' on' : ''}"><button type="button" class="tab-main" role="tab" aria-selected="${i === state.active}" data-tab="${i}"><span class="dot ${dot}" title="${word}"></span>${esc(t.target)}</button><button type="button" class="tab-x" data-close="${i}" aria-label="Close ${esc(t.target)}" title="Close">${ICON.x}</button></div>`;
     }).join('') + `<button type="button" class="tab-new" id="newTab" aria-label="Trace somewhere new" title="Trace somewhere new">${ICON.plus}</button>`;
     const on = $('.tab.on', els.tabs); if (on) { const b = els.tabs.getBoundingClientRect(), r = on.getBoundingClientRect(); if (r.left < b.left) els.tabs.scrollLeft += r.left - b.left - 12; else if (r.right > b.right) els.tabs.scrollLeft += r.right - b.right + 44; }
+    updateTabArrows();
+  }
+  // the strip scrolls sideways without a scrollbar: arrows appear at whichever end has more tabs
+  function updateTabArrows() {
+    const t = els.tabs, over = t.scrollWidth > t.clientWidth + 1;
+    $('#tabPrev').hidden = !over || t.scrollLeft <= 0;
+    $('#tabNext').hidden = !over || t.scrollLeft + t.clientWidth >= t.scrollWidth - 1;
   }
   function renderSummary() {
     const tr = cur(); if (!tr || !tr.revealed || state.home) { els.summary.textContent = ''; return; }
@@ -1935,18 +1979,21 @@ const App = (() => {
   function homeRows() {
     const items = homeItems();
     if (!items.length) return `<tr><td colspan="6" class="fail">${history.length ? 'Nothing matches that search.' : 'Nothing traced yet.'}</td></tr>`;
-    const full = items.map(it => { const tr = it.tr, d = tr.fail ? null : tr.hops[tr.hops.length - 1], c = d && CITY[d.c], rs = runsOf(tr.target), last = rs[0]; return { it, tr, d, c, rs, last, rtt: last && last.rtt != null ? last.rtt : d && d.base, live: state.tabs.find(x => x.target === tr.target) }; });
+    const full = items.map(it => { const tr = it.tr, d = tr.fail ? null : tr.hops.slice().reverse().find(h => h && !h.noreply) || null, c = d && CITY[d.c] || null, rs = runsOf(tr.target), last = rs[0]; return { it, tr, d, c, rs, last, rtt: last && last.rtt != null ? last.rtt : d && d.base, live: state.tabs.find(x => x.target === tr.target) }; });
     return sorted('home', full, (x, k) => k === 't' ? x.tr.target : k === 'end' ? (x.c ? x.c.n : null) : k === 'runs' ? x.rs.length : k === 'rtt' ? (x.tr.fail ? null : x.rtt) : k === 'when' ? (x.live && x.live.keep ? Infinity : x.it.e.when) : null).map(({ it, tr, d, c, rs, last, rtt, live }) => {
-      return `<tr data-open="${esc(tr.target)}" class="${hot === tr.target ? 'on' : ''}"><td class="t" title="${esc(tr.target)}"><i style="--c:var(--net-${it.k})"></i>${esc(tr.target)}</td>` +
-        (tr.fail || !d ? `<td class="fail" colspan="3">${tr.fail ? 'No address found' : 'No route saved yet'}</td>` : `<td>${esc(c.n)}${d.anycast ? ', answered nearby' : ', ' + esc(c.country)}</td>` +
-          `<td class="c-hops">${rs.length ? `<button type="button" class="runs-btn" data-runs="${esc(tr.target)}" title="Trends for ${esc(tr.target)}">${rs.length} run${rs.length === 1 ? '' : 's'}${tinyTrend(rs)}</button>` : ''}</td><td class="num c-rtt">${fmt(rtt)} ms</td>`) +
-        `<td class="c-when">${live && live.keep ? `<button type="button" class="probing stop" data-stop="${esc(tr.target)}" title="Click to stop probing ${esc(tr.target)}">Probing now<i>Stop</i></button>` : esc(ago(it.e.when)) + (last && last.net ? ', ' + esc(NETWORKS[last.net].n) : '')}</td>` +
-        (state.confirmForget === tr.target ? `<td class="acts asking" colspan="1"><span class="ask">Remove ${esc(tr.target)} and ${rs.length ? `its ${rs.length} saved run${rs.length === 1 ? '' : 's'}` : 'its history'}? This can't be undone. <button type="button" class="btn danger" data-forget-yes="${esc(tr.target)}">Remove</button><button type="button" class="btn" data-forget-no>Keep</button></span></td>` :
-        `<td class="acts"><button type="button" data-again="${esc(tr.target)}">Run again</button><button type="button" class="x" data-forget="${esc(tr.target)}" aria-label="Remove ${esc(tr.target)} and its history" title="Remove from this list, with its runs">${ICON.x}</button></td>`) + `</tr>`;
+      try { return homeRow({ it, tr, d, c, rs, last, rtt, live }); } catch (e) { console.error('home row', tr.target, e); return `<tr data-open="${esc(tr.target)}"><td class="t">${esc(tr.target)}</td><td class="fail" colspan="4">This entry couldn't be shown (${esc(String(e && e.message || e))})</td><td class="acts"><button type="button" class="x" data-forget="${esc(tr.target)}" aria-label="Remove ${esc(tr.target)}" title="Remove from this list, with its runs">${ICON.x}</button></td></tr>`; }
     }).join('');
   }
+  function homeRow({ it, tr, d, c, rs, last, rtt, live }) {
+      return `<tr data-open="${esc(tr.target)}" class="${hot === tr.target ? 'on' : ''}"><td class="t" title="${esc(tr.target)}"><i style="--c:var(--net-${it.k})"></i>${esc(tr.target)}</td>` +
+        (tr.fail || !d ? `<td class="fail" colspan="3">${tr.fail ? 'No address found' : 'No route saved yet'}</td>` : `<td>${c ? esc(c.n) + (d.anycast ? ', answered nearby' : c.country ? ', ' + esc(c.country) : '') : 'Somewhere'}</td>` +
+          `<td class="c-hops">${rs.length ? `<button type="button" class="runs-btn" data-runs="${esc(tr.target)}" title="Trends for ${esc(tr.target)}">${rs.length} run${rs.length === 1 ? '' : 's'}${tinyTrend(rs)}</button>` : ''}</td><td class="num c-rtt">${fmt(rtt)} ms</td>`) +
+        `<td class="c-when">${live && live.keep ? `<button type="button" class="probing stop" data-stop="${esc(tr.target)}" title="Click to stop probing ${esc(tr.target)}">Probing now<i>Stop</i></button>` : esc(ago(it.e.when)) + (last && last.net && NETWORKS[last.net] ? ', ' + esc(NETWORKS[last.net].n) : '')}</td>` +
+        (state.confirmForget === tr.target ? `<td class="acts asking" colspan="1"><span class="ask">Remove ${esc(tr.target)} and ${rs.length ? `its ${rs.length} saved run${rs.length === 1 ? '' : 's'}` : 'its history'}? This can't be undone. <button type="button" class="btn danger" data-forget-yes="${esc(tr.target)}">Remove</button><button type="button" class="btn" data-forget-no>Keep</button></span></td>` :
+        `<td class="acts"><button type="button" data-again="${esc(tr.target)}">Run again</button><button type="button" class="x" data-forget="${esc(tr.target)}" aria-label="Remove ${esc(tr.target)} and its history" title="Remove from this list, with its runs">${ICON.x}</button></td>`) + `</tr>`;
+  }
   function homeLead() {
-    const here = [CITY[HOME].lon, CITY[HOME].lat], facts = history.map(e => traceFor(e.target)).filter(tr => !tr.fail).map(tr => { const d = tr.hops[tr.hops.length - 1], c = CITY[d.c], last = runsOf(tr.target)[0]; return { d, c, ms: last && last.rtt != null ? last.rtt : d.base, far: km(here, [c.lon, c.lat]) }; });
+    const here = [CITY[HOME].lon, CITY[HOME].lat], facts = history.map(e => traceFor(e.target)).filter(tr => !tr.fail).map(tr => { const d = tr.hops.slice().reverse().find(h => h && !h.noreply), c = d && CITY[d.c], last = runsOf(tr.target)[0]; return { d, c, ms: last && last.rtt != null ? last.rtt : d && d.base, far: c ? km(here, [c.lon, c.lat]) : 0 }; }).filter(f => f.d && f.c);
     if (!facts.length) return 'Nothing traced yet. Type a host name above and press Trace, or pick a suggestion.';
     const far = facts.reduce((a, b) => b.far > a.far ? b : a), slow = facts.reduce((a, b) => b.ms > a.ms ? b : a), n = history.length;
     return `${n} place${n === 1 ? '' : 's'}, ${runs.length} run${runs.length === 1 ? '' : 's'}. ` + (far.far < 60 ? 'None of them left town.' : far === slow ? `${esc(far.c.n)} is both the farthest and the slowest: about ${dist(far.far)} away and ${fmt(slow.ms)} ms.` : `Farthest: ${esc(far.c.n)}, about ${dist(far.far)}. Slowest: ${esc(slow.c.n)}, ${fmt(slow.ms)} ms.`);
@@ -1974,7 +2021,7 @@ const App = (() => {
     if (at < 0) { const tr = makeTrace(target); if (tr.fail) tr.status = 'failed'; else fillInstantly(tr); state.tabs.push(tr); at = state.tabs.length - 1; at = trimTabs(at); }
     setView(view || state.openIn); activate(at); if (again) { els.target.value = target; go(); }
   }
-  function trimTabs(keep) { while (state.tabs.length > 8) { const drop = state.tabs.findIndex((x, k) => k !== keep && x.status !== 'running'); if (drop < 0) break; state.tabs.splice(drop, 1); if (drop < keep) keep--; } return keep; }
+  function trimTabs(keep) { while (state.tabs.length > 24) { const drop = state.tabs.findIndex((x, k) => k !== keep && x.status !== 'running'); if (drop < 0) break; state.tabs.splice(drop, 1); if (drop < keep) keep--; } return keep; }
 
   /* ---------- exports: a CSV for spreadsheets, or a printable report for a PDF ---------- */
   const csvCell = v => { const t = v == null ? '' : String(v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
@@ -2116,6 +2163,9 @@ const App = (() => {
     const xs = $$('.ping-x span', box); xs[0].textContent = h.log.length ? clock(h.log[0].t) : ''; xs[1].textContent = h.log.length ? clock(h.log[h.log.length - 1].t) : '';
     $$('[data-ptab]', box).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ptab === state.ptab)));
     const log = $('.ping-log', box), note = $('.ping-logbar span', box);
+    // Rebuilding the rows empties the box for an instant, which snaps its scroll to the top. Put it back afterwards,
+    // moved down by the rows that arrived, so whatever was under the pointer stays there while probing runs.
+    const keepTop = log.scrollTop, prevBase = +(log.dataset.base || 0);
     if (state.ptab === 'drops') {
       note.textContent = st.runs.length ? `${st.runs.length} drop${st.runs.length === 1 ? '' : 's'}, newest first` : '';
       log.innerHTML = st.runs.length ? `<table><thead><tr><th scope="col">Started</th><th scope="col">Back at</th><th scope="col">Lasted</th><th scope="col" class="num">Probes lost</th></tr></thead><tbody>` +
@@ -2125,7 +2175,10 @@ const App = (() => {
       const rows = h.log.slice(-400).reverse(), base = h.log.length;
       note.textContent = base > 400 ? `Newest 400 of ${base.toLocaleString('en-US')}` : 'Newest first';
       log.innerHTML = `<table><thead><tr><th scope="col" class="num">Probe</th><th scope="col">Time</th><th scope="col" class="num">Round trip</th></tr></thead><tbody>` + rows.map((e, k) => `<tr data-n="${base - k}"><td class="num">${base - k}</td><td>${clock(e.t)}</td><td class="num${e.v == null ? ' lost' : ''}">${e.v == null ? 'Lost' : fmt(e.v) + ' ms'}</td></tr>`).join('') + '</tbody></table>';
+      log.dataset.base = base;
+      if (keepTop > 0) { const row = $('tbody tr', log), added = prevBase ? Math.max(0, base - prevBase) : 0; log.scrollTop = keepTop + added * (row ? row.offsetHeight : 0); }
     }
+    if (state.ptab === 'drops' && keepTop > 0) log.scrollTop = keepTop;
     if (pinT != null) { const k = placeCursor(h, pinT, true); if (k != null) { const row = state.ptab === 'drops' ? null : $(`tr[data-n="${k + 1}"]`, log); if (row) row.classList.add('hit'); } }
   }
 
@@ -2250,12 +2303,15 @@ const App = (() => {
     if (tr) { els.target.value = tr.target; setStatus(statusFor(tr)); }
     refresh(true); MapView.refit(true);
   }
+  const NOTE_WORDS = { '!H': 'the host is unreachable', '!N': 'the network is unreachable', '!X': 'the way is blocked by a filter', '!P': 'the protocol is unreachable', '!F': 'the packet would need fragmenting', '!S': 'source routing failed' };
   function statusFor(tr) {
     if (tr.fail === 'tool') return tr.failMsg || `The traceroute tool couldn't run.`;
     if (tr.fail) return `Couldn't find an address for ${tr.target}.`;
     if (tr.status === 'running') return `Tracing the route to ${tr.target}…`;
     if (tr.keep) return `Probing every hop of ${tr.target} every ${state.every === 1 ? 'second' : state.every + ' seconds'}.`;
     if (tr.status === 'stopped') return `Stopped after hop ${tr.revealed}.`;
+    if (tr.live && tr.reached === false && tr.hops.length && tr.hops[tr.hops.length - 1].note && !tr.hops[tr.hops.length - 1].noreply) { const h = tr.hops[tr.hops.length - 1]; return `${tr.target} can't be reached from here: hop ${tr.hops.length}${h.ip ? ` (${h.ip})` : ''} answered that ${NOTE_WORDS[h.note] || h.note}.`; }
+    if (tr.live && tr.reached === false && tr.hops.length) return `Trace ended at hop ${tr.hops.length}: ${tr.target} didn't answer${tr.trailingSilent ? `, and neither did the ${tr.trailingSilent} hop${tr.trailingSilent === 1 ? '' : 's'} after that` : ''}. The route stops at the last router that did.`;
     return `Trace complete. ${tr.hops.length} hops to ${tr.target}.`;
   }
 
@@ -2312,10 +2368,10 @@ const App = (() => {
           settleLive(tr);
           if (isActive(tr)) { if (state.follow) tr.sel = i; MapView.arrive(tr, i); refresh(); }
         },
-        onName: p => { const h = tr.hops.find(x => x && x.ip === p.ip); if (!h) return; if (p.name) { h.host = p.name; h.noName = false; } else { h.host = h.ip; h.noName = true; } h.nameDone = true; if (h.geoDone) h.resolved = true; if (isActive(tr)) refresh(); },
-        onDone: p => { tr.reached = !!p.reached; finish(); },
+        onName: p => { const h = tr.hops.find(x => x && x.ip === p.ip); if (!h) return; if (p.name) { h.host = p.name; h.noName = false; const hk = hintPlace(p.name); if (hk) { h.place = hk; h.hinted = true; settleLive(tr); } } else { h.host = h.ip; h.noName = true; } h.nameDone = true; if (h.geoDone) h.resolved = true; if (isActive(tr)) refresh(); },
+        onDone: p => { tr.reached = !!p.reached; tr.gaveUp = !!p.gave_up; finish(); },
         onError: msg => { tr.liveError = msg; finish(); }
-      }, { maxHops: 30, waitMs: 1500 });
+      }, { maxHops: 30, waitMs: 1500, engine: state.engine });
     });
     if (tok.cancelled) return;
     if (!tr.hops.length) { tr.status = 'failed'; tr.fail = 'tool'; tr.failMsg = tr.liveError || 'The traceroute tool printed nothing.'; tr.tok = null; LIVE.release(tr.liveId); showMsg(tr.failMsg); Sound.play('failure'); setStatus(statusFor(tr)); refresh(); return; }
@@ -2323,6 +2379,10 @@ const App = (() => {
     const until = Date.now() + 6000;
     while (tr.hops.some(h => !h.noreply && !h.resolved) && Date.now() < until) { await sleep(90, tok); if (tok.cancelled) return; }
     tr.hops.forEach(h => { if (!h.resolved) { h.resolved = true; if (!h.nameDone) h.noName = true; } });
+    // A destination that drops probes never answers, so the tool runs on printing silence: keep the route, drop the tail.
+    if (!tr.reached) { let n = tr.hops.length; while (n > 0 && tr.hops[n - 1].noreply) n--; if (n > 0 && n < tr.hops.length) { tr.trailingSilent = tr.hops.length - n; tr.hops.length = n; tr.revealed = n; if (tr.sel >= n) tr.sel = n - 1; } }
+    // the destination may turn out to sit inside a run of silent hops (found by handshake): nothing lies beyond it
+    else { const d = tr.hops.map(h => !!h.dest).lastIndexOf(true); if (d >= 0 && d < tr.hops.length - 1) { tr.hops.length = d + 1; tr.revealed = d + 1; if (tr.sel > d) tr.sel = d; } }
     settleLive(tr); LIVE.release(tr.liveId);
     tr.status = 'done'; tr.tok = null; remember(tr, 'done'); recordRun(tr); if (state.autoKeep) setKeep(tr, true);
     if (isActive(tr)) { Sound.play('trace'); setStatus(statusFor(tr)); refresh(); } else { renderTabs(); if (state.home) renderHome(true); }
@@ -2361,7 +2421,8 @@ const App = (() => {
   function hydrateLive(tr) {
     const run = runsOf(tr.target)[0]; tr.hops = []; tr.nets = ['home'];
     if (!run || !run.route || !run.route.length) { tr.revealed = 0; tr.status = 'idle'; buildGeometry(tr); return; }
-    run.route.forEach((e, i) => {
+    let upto = run.route.length; while (upto > 1 && !run.route[upto - 1]) upto--;
+    run.route.slice(0, upto).forEach((e, i) => {
       const h = liveHop(tr, i, e ? e.ip : null); h.revealed = true; h.resolved = true;
       if (e) {
         h.host = e.name || e.ip; h.noName = !e.name || e.name === e.ip; h.dest = !!e.dest; h.priv = !!e.priv; h.access = e.kind ? e.kind !== 'public' : h.access; h.kind = e.kind || h.kind;
@@ -2557,6 +2618,12 @@ const App = (() => {
       if (a.dataset.act === 'sound') { state.pingSound = a.checked; store.set('pingSound', a.checked); if (a.checked) Sound.play('timeout'); }
     });
 
+    addEventListener('error', e => { try { setStatus(`Something went wrong: ${e.message || e.error}`); } catch (x) { /* the status line itself is gone */ } });
+    addEventListener('unhandledrejection', e => { try { setStatus(`Something went wrong: ${e.reason && e.reason.message || e.reason}`); } catch (x) { /* nothing to show it in */ } });
+    els.tabs.addEventListener('scroll', updateTabArrows, { passive: true }); addEventListener('resize', updateTabArrows);
+    els.tabs.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { els.tabs.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+    $('#tabPrev').addEventListener('click', () => els.tabs.scrollBy({ left: -Math.max(160, els.tabs.clientWidth * .6), behavior: 'smooth' }));
+    $('#tabNext').addEventListener('click', () => els.tabs.scrollBy({ left: Math.max(160, els.tabs.clientWidth * .6), behavior: 'smooth' }));
     els.tabs.addEventListener('click', e => {
       const x = e.target.closest('[data-close]'); if (x) return closeTab(+x.dataset.close);
       const t = e.target.closest('[data-tab]'); if (t) return activate(+t.dataset.tab);
@@ -2594,6 +2661,7 @@ const App = (() => {
   }
   const PREFS = {
     setStart: ['home', () => state.startup, v => { state.startup = v; store.set('startup', v); }],
+    setEngine: ['native', () => state.engine, v => { state.engine = v === 'tool' ? 'tool' : 'native'; store.set('engine', state.engine); }],
     setOpenIn: ['map', () => state.openIn === 'list' ? 'map' : state.openIn, v => { state.openIn = v; store.set('openIn', v); }],
     setDock: [true, () => state.dock, v => { state.dock = v; store.set('dock', v); applyDock(); }],
     setInfo: [true, () => state.infoOpen, v => setInfo(v)],
@@ -2643,7 +2711,9 @@ const App = (() => {
     if (LIVE) {
       const sim = $('.sim'); sim.firstChild.textContent = 'Live route'; $('.sim-tip').textContent = 'Real probes, sent from this computer with the system\'s traceroute tool. Places come from an online lookup and are estimates; addresses set aside for private networks never leave this machine.';
       const hs = $('#setHome').closest('.set-row'); if (hs) hs.hidden = true;
-      LIVE.platform().then(p => { if (p && p.tool_error) showMsg(p.tool_error); }).catch(() => {});
+      LIVE.platform().then(p => { if (p && p.tool_error) showMsg(p.tool_error); if (p && p.version) $('#verLink').textContent = 'v' + p.version; }).catch(() => {});
+      // links leave the webview for the browser
+      $('#verLink').addEventListener('click', e => { if (LIVE.openUrl) { e.preventDefault(); LIVE.openUrl(e.currentTarget.href).catch(() => {}); } });
       if (!liveHome) LIVE.geoSelf().then(g => { const k = liveCity(g); if (k) { liveHome = k; store.set('liveHome', k); if (state.home) renderHome(); } }).catch(() => {});
     }
     // tabs are for this session only: a fresh open starts with none, and the Home list carries the past

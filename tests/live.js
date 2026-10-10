@@ -34,6 +34,8 @@ const fs = require('fs');
   check('places from geo', /Chicago/.test(rows[3]) && /New York/.test(rows[4]) && /Boston/.test(rows[5]));
   check('networks named', /Prairie Broadband/.test(rows[1]) && /Meridian/.test(rows[4]));
   check('status complete', /Trace complete/.test(await txt('#status')), await txt('#status'));
+  const cues = await p.evaluate(() => window.__FAKE_CUES || []);
+  check('cues played by the shell', cues.includes('chirp/start') && cues.includes('chirp/hop') && cues.includes('chirp/trace'), cues.join(' '));
   await p.screenshot({ path: path.join(__dirname, 'shots', 'live-trace.png') });
 
   // details pane: registration over RDAP, connection from the system
@@ -88,6 +90,46 @@ const fs = require('fs');
   check('status confirms the save', /Saved /.test(await txt('#status')), await txt('#status'));
   await p.evaluate(() => { window.__FAKE_CANCEL_SAVE = true; }); await p.click('[data-export="runs-csv"]'); await p.waitForTimeout(200);
   check('cancelled save says so', /Not saved/.test(await txt('#status')), await txt('#status'));
+
+  // a destination that drops probes: the tool trails off into silence, the tail is dropped and the status says so.
+  // The router named for Denver sits in Denver even though the address database files it under London.
+  await p.evaluate(() => { window.__FAKE_REACHED = false; window.__FAKE_ROUTE = [
+    { hop: 1, addrs: ['192.168.1.1'], rtts: [1.1, 1.0, 1.2] }, { hop: 2, addrs: ['198.51.100.9'], rtts: [12, 12.4, 12.1] },
+    { hop: 3, addrs: [], rtts: [null, null, null] }, { hop: 4, addrs: [], rtts: [null, null, null] }, { hop: 5, addrs: [], rtts: [null, null, null] },
+    { hop: 6, addrs: [], rtts: [null, null, null] }, { hop: 7, addrs: [], rtts: [null, null, null] }]; });
+  await p.fill('#target', 'silent.example'); await p.keyboard.press('Enter'); await p.waitForTimeout(2400);
+  const rows3 = await p.$$eval('#dock tbody tr', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+  check('silent tail dropped', rows3.length === 2, rows3.length + ' rows');
+  check('status explains the silence', /didn't answer/.test(await txt('#status')) && /5 hops after/.test(await txt('#status')), await txt('#status'));
+  check('place taken from the router name', /Denver/.test(rows3[1] || '') && !/London/.test(rows3[1] || ''), rows3[1]);
+  await p.evaluate(() => { delete window.__FAKE_REACHED; window.__FAKE_ROUTE = null; });
+
+  // a router that answers "host unreachable": the trace stops there and the status says so
+  await p.evaluate(() => { window.__FAKE_REACHED = false; window.__FAKE_ROUTE = [
+    { hop: 1, addrs: ['192.168.1.1'], rtts: [1.1, 1.0, 1.2] }, { hop: 2, addrs: ['198.51.100.7'], rtts: [12, 12.4, 12.1], note: '!H' }]; });
+  await p.fill('#target', 'blocked.example'); await p.keyboard.press('Enter'); await p.waitForTimeout(1600);
+  check('dead end explained', /can't be reached from here/.test(await txt('#status')) && /host is unreachable/.test(await txt('#status')), await txt('#status'));
+  await p.evaluate(() => { delete window.__FAKE_REACHED; window.__FAKE_ROUTE = null; });
+
+  // a run that ends in silence (older builds saved these): Home still lists it, ended at the last router that answered
+  await p.evaluate(() => { window.__FAKE_ROUTE = [
+    { hop: 1, addrs: ['192.168.1.1'], rtts: [1.1, 1.0, 1.2] }, { hop: 2, addrs: ['198.51.100.7'], rtts: [12, 12.4, 12.1] },
+    { hop: 3, addrs: [], rtts: [null, null, null] }, { hop: 4, addrs: [], rtts: [null, null, null] }]; });
+  await p.fill('#target', 'tail.example'); await p.keyboard.press('Enter'); await p.waitForTimeout(1600);
+  await p.evaluate(() => { window.__FAKE_ROUTE = null; });
+  await p.click('#homeBtn'); await p.waitForTimeout(400);
+  const tailRow = await p.$eval('.hist tr[data-open="tail.example"]', r => r.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+  check('silent-tailed run listed on Home', /Chicago/.test(tailRow), tailRow || 'row missing; home=' + (await p.$eval('#viewHome', e => e.innerHTML.length)));
+  check('Home status set', /^Home\./.test(await txt('#status')), await txt('#status'));
+  await p.reload(); await p.waitForTimeout(700);
+  check('Home survives a reload with that run', (await p.$$eval('.hist tbody tr[data-open]', r => r.length)) >= 2, 'rows=' + await p.$$eval('.hist tbody tr[data-open]', r => r.length));
+
+  // many tabs: the strip scrolls and shows an arrow at the overflowing end
+  for (let k = 1; k <= 12; k++) { await p.fill('#target', `a${k}.example`); await p.keyboard.press('Enter'); await p.waitForTimeout(150); }
+  await p.waitForTimeout(400);
+  const tabsInfo = await p.evaluate(() => ({ n: document.querySelectorAll('.tab').length, over: document.getElementById('tabs').scrollWidth > document.getElementById('tabs').clientWidth, prev: !document.getElementById('tabPrev').hidden, next: !document.getElementById('tabNext').hidden }));
+  check('tabs are kept, not dropped', tabsInfo.n >= 12, 'tabs=' + tabsInfo.n);
+  check('overflowing strip shows an arrow', !tabsInfo.over || tabsInfo.prev || tabsInfo.next, JSON.stringify(tabsInfo));
 
   check('no console errors', errors.length === 0, errors.join(' | '));
   await browser.close();

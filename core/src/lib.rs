@@ -8,6 +8,7 @@
 pub mod dns;
 pub mod geo;
 pub mod ipkind;
+pub mod native;
 pub mod netinfo;
 pub mod parse;
 pub mod ping;

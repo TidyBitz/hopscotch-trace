@@ -1,13 +1,16 @@
 //! Registration records over RDAP, the successor to WHOIS.
 //!
-//! rdap.org is a public bootstrap service: it redirects `/ip/{addr}` and
-//! `/domain/{name}` to whichever registry holds the record, and we follow
-//! the redirect. Records are simplified to the handful of facts the details
-//! pane shows.
+//! IANA publishes bootstrap files saying which registry's RDAP server holds
+//! which address blocks and top-level domains; we fetch those once and ask
+//! the registry directly. rdap.org, a public redirector that does the same
+//! job, is the fallback, but it rate-limits busy users. Records are
+//! simplified to the handful of facts the details pane shows.
 
 use serde::Serialize;
 use serde_json::Value;
-use std::time::Duration;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 pub const UA: &str = concat!("hopscotch-trace/", env!("CARGO_PKG_VERSION"), " (+https://github.com/TidyBitz/hopscotch-trace)");
 
@@ -43,7 +46,11 @@ pub struct DomainRecord {
 }
 
 fn get(url: &str) -> crate::Result<(Value, String)> {
-    let r = ureq::get(url).set("Accept", "application/rdap+json, application/json").set("User-Agent", UA).timeout(Duration::from_secs(12)).call()?;
+    get_within(url, Duration::from_secs(12))
+}
+
+fn get_within(url: &str, timeout: Duration) -> crate::Result<(Value, String)> {
+    let r = ureq::get(url).set("Accept", "application/rdap+json, application/json").set("User-Agent", UA).timeout(timeout).call()?;
     let final_url = r.get_url().to_string();
     let v: Value = r.into_json()?;
     Ok((v, final_url))
@@ -159,13 +166,138 @@ pub fn simplify_domain(v: &Value, final_url: &str) -> DomainRecord {
     }
 }
 
+/* ---------- IANA bootstrap: which registry to ask ---------- */
+
+struct Bootstrap {
+    v4: Vec<(u32, u8, String)>,
+    v6: Vec<(u128, u8, String)>,
+    dns: Vec<(String, String)>,
+}
+
+struct BootState {
+    table: Option<Bootstrap>,
+    tried: Option<Instant>,
+}
+
+static BOOT: OnceLock<Mutex<BootState>> = OnceLock::new();
+const RETRY_AFTER: Duration = Duration::from_secs(600);
+
+/// `services: [[[keys...], [urls...]], ...]` → (keys, first https url) per service
+fn services(v: &Value) -> Vec<(Vec<String>, String)> {
+    let mut out = Vec::new();
+    for svc in v.get("services").and_then(Value::as_array).into_iter().flatten() {
+        let keys: Vec<String> = svc.get(0).and_then(Value::as_array).into_iter().flatten().filter_map(s).collect();
+        let urls: Vec<String> = svc.get(1).and_then(Value::as_array).into_iter().flatten().filter_map(s).collect();
+        if let Some(base) = urls.iter().find(|u| u.starts_with("https://")).or(urls.first()) {
+            out.push((keys, base.clone()));
+        }
+    }
+    out
+}
+
+fn cidr4(t: &str) -> Option<(u32, u8)> {
+    let (a, l) = t.split_once('/')?;
+    Some((u32::from(a.parse::<Ipv4Addr>().ok()?), l.parse().ok()?))
+}
+
+fn cidr6(t: &str) -> Option<(u128, u8)> {
+    let (a, l) = t.split_once('/')?;
+    Some((u128::from(a.parse::<Ipv6Addr>().ok()?), l.parse().ok()?))
+}
+
+fn parse_bootstrap(v4: &Value, v6: &Value, dns: &Value) -> Bootstrap {
+    let mut b = Bootstrap { v4: Vec::new(), v6: Vec::new(), dns: Vec::new() };
+    for (keys, base) in services(v4) {
+        b.v4.extend(keys.iter().filter_map(|k| cidr4(k)).map(|(ip, len)| (ip, len, base.clone())));
+    }
+    for (keys, base) in services(v6) {
+        b.v6.extend(keys.iter().filter_map(|k| cidr6(k)).map(|(ip, len)| (ip, len, base.clone())));
+    }
+    for (keys, base) in services(dns) {
+        b.dns.extend(keys.iter().map(|k| (k.trim_matches('.').to_lowercase(), base.clone())));
+    }
+    b
+}
+
+/// The bootstrap tables, fetched once per run. The network work happens
+/// outside the lock, with short timeouts, and a failed fetch is not retried
+/// for a while, so a lookup never waits on IANA for long: without the tables
+/// it simply goes to rdap.org.
+fn with_bootstrap<T>(f: impl FnOnce(&Bootstrap) -> Option<T>) -> Option<T> {
+    let cell = BOOT.get_or_init(|| Mutex::new(BootState { table: None, tried: None }));
+    let need = {
+        let mut g = cell.lock().ok()?;
+        let due = g.table.is_none() && g.tried.map_or(true, |t| t.elapsed() > RETRY_AFTER);
+        if due {
+            g.tried = Some(Instant::now());
+        }
+        due
+    };
+    if need {
+        let fetch = |name: &str| get_within(&format!("https://data.iana.org/rdap/{name}.json"), Duration::from_secs(5)).map(|(v, _)| v).unwrap_or(Value::Null);
+        let b = parse_bootstrap(&fetch("ipv4"), &fetch("ipv6"), &fetch("dns"));
+        if !(b.v4.is_empty() && b.dns.is_empty()) {
+            cell.lock().ok()?.table = Some(b);
+        }
+    }
+    let g = cell.lock().ok()?;
+    f(g.table.as_ref()?)
+}
+
+fn base_for_ip(b: &Bootstrap, ip: IpAddr) -> Option<String> {
+    match ip {
+        IpAddr::V4(a) => {
+            let x = u32::from(a);
+            b.v4.iter().filter(|(net, len, _)| *len == 0 || (x >> (32 - *len as u32)) == (*net >> (32 - *len as u32))).max_by_key(|(_, len, _)| *len).map(|(_, _, u)| u.clone())
+        }
+        IpAddr::V6(a) => {
+            let x = u128::from(a);
+            b.v6.iter().filter(|(net, len, _)| *len == 0 || (x >> (128 - *len as u32)) == (*net >> (128 - *len as u32))).max_by_key(|(_, len, _)| *len).map(|(_, _, u)| u.clone())
+        }
+    }
+}
+
+fn base_for_domain(b: &Bootstrap, name: &str) -> Option<String> {
+    let tld = name.trim_end_matches('.').rsplit('.').next()?.to_lowercase();
+    b.dns.iter().find(|(k, _)| *k == tld).map(|(_, u)| u.clone())
+}
+
+fn nicer(e: crate::Error) -> crate::Error {
+    let m = e.to_string();
+    if m.contains("429") {
+        crate::Error::Message("The registry is limiting lookups from here right now. Try again in a minute.".into())
+    } else {
+        e
+    }
+}
+
+/// Try the registry IANA points at, then rdap.org.
+fn lookup(direct: Option<String>, path: &str) -> crate::Result<(Value, String)> {
+    let mut urls: Vec<String> = Vec::new();
+    if let Some(base) = direct {
+        urls.push(format!("{}/{path}", base.trim_end_matches('/')));
+    }
+    urls.push(format!("https://rdap.org/{path}"));
+    let mut last = None;
+    for url in urls {
+        match get(&url) {
+            Ok(x) => return Ok(x),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(nicer(last.unwrap_or(crate::Error::Message("no RDAP server to ask".into()))))
+}
+
 pub fn ip(addr: &str) -> crate::Result<IpRecord> {
-    let (v, url) = get(&format!("https://rdap.org/ip/{addr}"))?;
+    let direct = addr.parse::<IpAddr>().ok().and_then(|ip| with_bootstrap(|b| base_for_ip(b, ip)));
+    let (v, url) = lookup(direct, &format!("ip/{addr}"))?;
     Ok(simplify_ip(&v, &url))
 }
 
 pub fn domain(name: &str) -> crate::Result<DomainRecord> {
-    let (v, url) = get(&format!("https://rdap.org/domain/{}", name.trim_end_matches('.')))?;
+    let name = name.trim_end_matches('.');
+    let direct = with_bootstrap(|b| base_for_domain(b, name));
+    let (v, url) = lookup(direct, &format!("domain/{name}"))?;
     Ok(simplify_domain(&v, &url))
 }
 
@@ -225,5 +357,23 @@ mod tests {
         assert_eq!(d.registrar.as_deref(), Some("Example Registrar"));
         assert_eq!(d.expires.as_deref(), Some("2027-08-13"));
         assert_eq!(d.nameservers, vec!["a.iana-servers.net", "b.iana-servers.net"]);
+    }
+}
+
+#[cfg(test)]
+mod bootstrap_tests {
+    use super::*;
+    #[test]
+    fn longest_prefix_and_tld_win() {
+        let v4: Value = serde_json::json!({ "services": [[["1.0.0.0/8", "14.0.0.0/8"], ["https://rdap.apnic.net/"]], [["1.1.0.0/16"], ["https://rdap.example.net/"]]] });
+        let v6: Value = serde_json::json!({ "services": [[["2001:200::/23"], ["https://rdap.apnic.net/"]]] });
+        let dns: Value = serde_json::json!({ "services": [[["com", "net"], ["https://rdap.verisign.com/com/v1/"]]] });
+        let b = parse_bootstrap(&v4, &v6, &dns);
+        assert_eq!(base_for_ip(&b, "1.1.1.1".parse().unwrap()).as_deref(), Some("https://rdap.example.net/"));
+        assert_eq!(base_for_ip(&b, "14.2.3.4".parse().unwrap()).as_deref(), Some("https://rdap.apnic.net/"));
+        assert_eq!(base_for_ip(&b, "8.8.8.8".parse().unwrap()), None);
+        assert_eq!(base_for_ip(&b, "2001:200::1".parse().unwrap()).as_deref(), Some("https://rdap.apnic.net/"));
+        assert_eq!(base_for_domain(&b, "example.com.").as_deref(), Some("https://rdap.verisign.com/com/v1/"));
+        assert_eq!(base_for_domain(&b, "example.org"), None);
     }
 }

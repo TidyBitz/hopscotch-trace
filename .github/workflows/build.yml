@@ -15,14 +15,14 @@ jobs:
     name: Tests (core + UI)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: '. -> target'
       - name: Core unit tests
         run: cargo test -p hopscotch-core
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - name: UI smoke tests (demo mode and live mode with a fake backend)
@@ -48,13 +48,13 @@ jobs:
             bundles: app,dmg
             rust_target: universal-apple-darwin
           - name: Linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             bundles: appimage,deb
             rust_target: ''
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
@@ -67,7 +67,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libasound2-dev
       - name: Install the Tauri CLI
         run: npm install
       - name: Build
@@ -78,6 +78,25 @@ jobs:
           else
             npx tauri build --bundles ${{ matrix.bundles }}
           fi
+      - name: Repack the AppImage without host-provided graphics libraries
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          cd target/release/bundle/appimage
+          img=$(ls *.AppImage)
+          chmod +x "$img"
+          ./"$img" --appimage-extract > /dev/null
+          # linuxdeploy copies these in, but they sit underneath the host's Mesa/EGL
+          # driver, which needs the host's own versions: with the bundled ones first on
+          # LD_LIBRARY_PATH, eglGetPlatformDisplay fails (EGL_BAD_PARAMETER) on Fedora.
+          # libasound too: the host's copy knows where its PipeWire/Pulse plugin lives, the bundled one would not
+          find squashfs-root \( -name 'libwayland-*.so*' -o -name 'libxkbcommon*.so*' -o -name 'libxcb*.so*' -o -name 'libasound*.so*' \) -print -delete
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          rm -f "$img"
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$img"
+          rm -rf squashfs-root appimagetool
+          ls -la
       - name: Collect portable and installer files
         shell: bash
         run: |
@@ -97,7 +116,7 @@ jobs:
               ;;
           esac
           ls -la out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: hopscotch-${{ matrix.name }}
           path: out/*
@@ -109,7 +128,7 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Publish release

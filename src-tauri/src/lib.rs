@@ -4,6 +4,8 @@
 //! Traces and probers are keyed by an id the UI chooses, so several tabs can
 //! trace and probe at once.
 
+mod sound;
+
 use hopscotch_core::{dns, geo, netinfo, ping, rdap, trace};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -44,6 +46,8 @@ struct Platform {
     arch: String,
     tool: Option<String>,
     tool_error: Option<String>,
+    /// "native" when this build probes on its own, "tool" when it runs the system traceroute.
+    engine: String,
     version: String,
 }
 
@@ -53,7 +57,10 @@ fn platform() -> Platform {
         Ok((t, _)) => (Some(format!("{} {}", t.program, t.args[..t.args.len() - 1].join(" "))), None),
         Err(e) => (None, Some(e)),
     };
-    Platform { os: std::env::consts::OS.into(), arch: std::env::consts::ARCH.into(), tool, tool_error, version: env!("CARGO_PKG_VERSION").into() }
+    let engine = trace::engine_name(true).to_string();
+    // with our own probes the tool is a fallback, so its absence is not worth a warning
+    let tool_error = if engine == "native" { None } else { tool_error };
+    Platform { os: std::env::consts::OS.into(), arch: std::env::consts::ARCH.into(), tool, tool_error, engine, version: env!("CARGO_PKG_VERSION").into() }
 }
 
 #[tauri::command]
@@ -69,19 +76,20 @@ async fn reverse(ip: String) -> Option<String> {
 /// Start a trace. Hops arrive as `trace:event` events carrying `id`; reverse
 /// names for each answering hop follow as `trace:name` events.
 #[tauri::command]
-fn start_trace(app: AppHandle, reg: State<'_, Registry>, id: String, target: String, max_hops: Option<u8>, wait_ms: Option<u32>) -> Result<(), String> {
+fn start_trace(app: AppHandle, reg: State<'_, Registry>, id: String, target: String, max_hops: Option<u8>, wait_ms: Option<u32>, engine: Option<String>) -> Result<(), String> {
     let cancel = trace::Cancel::default();
     if let Some(old) = reg.traces.lock().unwrap().insert(id.clone(), cancel.clone()) {
         old.cancel();
     }
-    let opts = trace::TraceOpts { max_hops: max_hops.unwrap_or(30).clamp(1, 64), wait_ms: wait_ms.unwrap_or(1500).clamp(200, 10_000), queries: 3 };
+    let opts = trace::TraceOpts { max_hops: max_hops.unwrap_or(30).clamp(1, 64), wait_ms: wait_ms.unwrap_or(1500).clamp(200, 10_000), queries: 3, give_up_after: 5 };
+    let prefer_native = engine.as_deref() != Some("tool");
     std::thread::Builder::new()
         .name(format!("trace-{id}"))
         .spawn(move || {
             let app2 = app.clone();
             let id2 = id.clone();
             let c2 = cancel.clone();
-            trace::run(&target, &opts, &cancel, move |ev| {
+            trace::run_auto(&target, &opts, &cancel, prefer_native, move |ev| {
                 if let trace::TraceEvent::Hop(h) = &ev {
                     if let Some(ip) = h.ip() {
                         // reverse lookups are slow and independent: one thread each, results as events
@@ -155,6 +163,12 @@ async fn save_text(path: String, text: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || std::fs::write(&path, text.as_bytes()).map_err(|e| format!("{path}: {e}"))).await.map_err(|e| e.to_string())?
 }
 
+/// Play a sound cue through the system's audio output (see sound.rs).
+#[tauri::command]
+async fn play_cue(name: String, pack: String, rtt: Option<f32>, pan: Option<f32>, vol: Option<f32>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || sound::play(&name, &pack, rtt.unwrap_or(40.0), pan.unwrap_or(0.0), vol.unwrap_or(55.0))).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn net_info() -> netinfo::NetInfo {
     tauri::async_runtime::spawn_blocking(netinfo::current).await.unwrap_or_default()
@@ -163,9 +177,10 @@ async fn net_info() -> netinfo::NetInfo {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Registry::default())
         .invoke_handler(tauri::generate_handler![
-            platform, resolve, reverse, start_trace, cancel_trace, start_probe, stop_probe, geo_lookup, geo_self, rdap_ip, rdap_domain, net_info, save_text
+            platform, resolve, reverse, start_trace, cancel_trace, start_probe, stop_probe, geo_lookup, geo_self, rdap_ip, rdap_domain, net_info, save_text, play_cue
         ])
         .run(tauri::generate_context!())
         .expect("error while running Hopscotch");

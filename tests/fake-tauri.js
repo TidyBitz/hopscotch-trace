@@ -9,9 +9,10 @@
     '100.64.8.1': { status: 'ok', lat: 39.1, lon: -94.58, city: 'Kansas City', region: 'Missouri', country: 'United States', country_code: 'US', isp: 'Prairie Broadband', org: 'Prairie Broadband LLC', asn: 64496, as_name: 'PRAIRIE-BB' },
     '198.51.100.7': { lat: 41.88, lon: -87.63, city: 'Chicago', country: 'United States', isp: 'Prairie Broadband', org: 'Prairie Broadband LLC', asn: 64496, as_name: 'PRAIRIE-BB' },
     '192.0.2.44': { lat: 40.71, lon: -74.01, city: 'New York', country: 'United States', isp: 'Meridian', org: 'Meridian Backbone', asn: 64500, as_name: 'MERIDIAN' },
+    '198.51.100.9': { lat: 51.51, lon: -0.13, city: 'London', country: 'United Kingdom', isp: 'DataCamp', org: 'DataCamp Limited', asn: 64501, as_name: 'CDN77' },
     '93.184.216.34': { lat: 42.36, lon: -71.06, city: 'Boston', country: 'United States', isp: 'Edge Hosting', org: 'Example Edge', asn: 64511, as_name: 'EDGE' }
   };
-  const NAMES = { '192.168.1.1': 'router.home', '198.51.100.7': 'be-12.core1.chi.prairie-bb.example', '192.0.2.44': 'ae-4.r3.nyc.meridian-bb.example', '93.184.216.34': 'example.org' };
+  const NAMES = { '192.168.1.1': 'router.home', '198.51.100.7': 'be-12.core1.chi.prairie-bb.example', '192.0.2.44': 'ae-4.r3.nyc.meridian-bb.example', '93.184.216.34': 'example.org', '198.51.100.9': 'vl204.den-cs1-core-2.cdn77.example' };
   const ROUTE = [
     { hop: 1, addrs: ['192.168.1.1'], rtts: [1.2, 0.9, 1.1] },
     { hop: 2, addrs: ['100.64.8.1'], rtts: [9.1, 8.7, 9.4] },
@@ -33,7 +34,7 @@
         if (cancelled.has(id)) return;
         emit('trace:event', Object.assign({ id, kind: 'hop', note: null }, h));
         if (h.addrs.length) setTimeout(() => emit('trace:name', { id, ip: h.addrs[0], name: NAMES[h.addrs[0]] || null }), 60);
-        if (i === route.length - 1) setTimeout(() => { if (!cancelled.has(id)) emit('trace:event', { id, kind: 'done', reached: true, hops: route.length }); }, 80);
+        if (i === route.length - 1) setTimeout(() => { if (!cancelled.has(id)) emit('trace:event', { id, kind: 'done', reached: window.__FAKE_REACHED !== false, hops: route.length, gave_up: window.__FAKE_REACHED === false }); }, 80);
       }, 120 + i * 140));
       if (!route.length) setTimeout(() => emit('trace:event', { id, kind: 'done', reached: false, hops: 0 }), 150);
     },
@@ -48,7 +49,8 @@
       probes[id] = setInterval(() => ips.forEach(ip => emit('probe:sample', { id, ip, ms: Math.random() < 0.05 ? null : 10 + Math.random() * 5, t: Date.now() })), intervalMs || 1000);
     },
     stop_probe: ({ id }) => { clearInterval(probes[id]); delete probes[id]; },
-    save_text: ({ path, text }) => { window.__FAKE_SAVED = { path, text }; }
+    save_text: ({ path, text }) => { window.__FAKE_SAVED = { path, text }; },
+    play_cue: ({ name, pack }) => { (window.__FAKE_CUES = window.__FAKE_CUES || []).push(pack + '/' + name); }
   };
   window.__FAKE_CALLS = [];
   window.__TAURI__ = {
