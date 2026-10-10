@@ -2,7 +2,25 @@
 
 A visual traceroute for the desktop, in the spirit of the classic NeoTrace: the route your packets take, drawn hop by hop on a real world map, with continuous probing so you can watch drops as they happen and trends across every run you've saved.
 
-> Status: **0.1, pre-release.** The app runs real traces through your system's traceroute tool. It has been tested with a simulated backend and needs real-world testing on Windows, macOS and Linux before it is ready for other people. See *Testing* below.
+> Status: **0.2, pre-release.** On Linux the app sends its own probes; Windows and macOS run the system traceroute tool. Tested daily on Fedora; the Windows and macOS builds need real-world testing before it is ready for other people. See *Testing* below.
+
+## Screenshots
+
+A live trace from Denver to a mirror in New Zealand. The map draws the route hop by hop; the table below it keeps the names, places, networks and round trips; the pane on the right has the registration record for the hop you pick.
+
+![A live trace to nz.archive.ubuntu.com drawn across the Pacific, with the hop table and the destination's registration record](docs/screenshots/trace-map.png)
+
+Keep probing: every hop pinged once a second, charted for the hop you choose, with a log of every probe and drop.
+
+![The Ping view probing every hop of a route, with a chart of one hop's round trips](docs/screenshots/ping-view.png)
+
+Home remembers where you've been, in whichever skin and map style you like: the Classic 2001 colours, green phosphor Cyber, or the modern dark map.
+
+![Home in the Classic 2001 map style, with the style picker open](docs/screenshots/home-classic.png)
+
+![Home in the Cyber skin, green phosphor on black](docs/screenshots/home-cyber.webp)
+
+![Home in the modern dark map style](docs/screenshots/home-modern.png)
 
 ## What it does
 
