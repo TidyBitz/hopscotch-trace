@@ -16,7 +16,7 @@ The version shown at the bottom right of the window links here.
 
 ### Desktop app
 - The Linux AppImage works on current Fedora and other Wayland desktops. It carries its own WebKitGTK and GStreamer but leaves Wayland, X11 and Mesa to the host.
-- Sound works in the AppImage.
+- Sound is played by the app itself through the system audio output, not by the webview, whose GStreamer path stalled after a fraction of a second inside the AppImage. Same three packs, same cues.
 - The probe log keeps its place while you scroll it during probing.
 - The canned "try one of these" targets no longer appear in the desktop app. They stay in the browser demo.
 - The version number at the bottom right links to this file.

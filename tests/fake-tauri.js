@@ -49,7 +49,8 @@
       probes[id] = setInterval(() => ips.forEach(ip => emit('probe:sample', { id, ip, ms: Math.random() < 0.05 ? null : 10 + Math.random() * 5, t: Date.now() })), intervalMs || 1000);
     },
     stop_probe: ({ id }) => { clearInterval(probes[id]); delete probes[id]; },
-    save_text: ({ path, text }) => { window.__FAKE_SAVED = { path, text }; }
+    save_text: ({ path, text }) => { window.__FAKE_SAVED = { path, text }; },
+    play_cue: ({ name, pack }) => { (window.__FAKE_CUES = window.__FAKE_CUES || []).push(pack + '/' + name); }
   };
   window.__FAKE_CALLS = [];
   window.__TAURI__ = {

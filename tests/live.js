@@ -34,6 +34,8 @@ const fs = require('fs');
   check('places from geo', /Chicago/.test(rows[3]) && /New York/.test(rows[4]) && /Boston/.test(rows[5]));
   check('networks named', /Prairie Broadband/.test(rows[1]) && /Meridian/.test(rows[4]));
   check('status complete', /Trace complete/.test(await txt('#status')), await txt('#status'));
+  const cues = await p.evaluate(() => window.__FAKE_CUES || []);
+  check('cues played by the shell', cues.includes('chirp/start') && cues.includes('chirp/hop') && cues.includes('chirp/trace'), cues.join(' '));
   await p.screenshot({ path: path.join(__dirname, 'shots', 'live-trace.png') });
 
   // details pane: registration over RDAP, connection from the system

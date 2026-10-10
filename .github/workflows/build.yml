@@ -67,7 +67,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libasound2-dev
       - name: Install the Tauri CLI
         run: npm install
       - name: Build
@@ -89,7 +89,8 @@ jobs:
           # linuxdeploy copies these in, but they sit underneath the host's Mesa/EGL
           # driver, which needs the host's own versions: with the bundled ones first on
           # LD_LIBRARY_PATH, eglGetPlatformDisplay fails (EGL_BAD_PARAMETER) on Fedora.
-          find squashfs-root \( -name 'libwayland-*.so*' -o -name 'libxkbcommon*.so*' -o -name 'libxcb*.so*' \) -print -delete
+          # libasound too: the host's copy knows where its PipeWire/Pulse plugin lives, the bundled one would not
+          find squashfs-root \( -name 'libwayland-*.so*' -o -name 'libxkbcommon*.so*' -o -name 'libxcb*.so*' -o -name 'libasound*.so*' \) -print -delete
           curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           rm -f "$img"

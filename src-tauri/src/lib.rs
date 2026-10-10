@@ -4,6 +4,8 @@
 //! Traces and probers are keyed by an id the UI chooses, so several tabs can
 //! trace and probe at once.
 
+mod sound;
+
 use hopscotch_core::{dns, geo, netinfo, ping, rdap, trace};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -161,6 +163,12 @@ async fn save_text(path: String, text: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || std::fs::write(&path, text.as_bytes()).map_err(|e| format!("{path}: {e}"))).await.map_err(|e| e.to_string())?
 }
 
+/// Play a sound cue through the system's audio output (see sound.rs).
+#[tauri::command]
+async fn play_cue(name: String, pack: String, rtt: Option<f32>, pan: Option<f32>, vol: Option<f32>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || sound::play(&name, &pack, rtt.unwrap_or(40.0), pan.unwrap_or(0.0), vol.unwrap_or(55.0))).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn net_info() -> netinfo::NetInfo {
     tauri::async_runtime::spawn_blocking(netinfo::current).await.unwrap_or_default()
@@ -172,7 +180,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(Registry::default())
         .invoke_handler(tauri::generate_handler![
-            platform, resolve, reverse, start_trace, cancel_trace, start_probe, stop_probe, geo_lookup, geo_self, rdap_ip, rdap_domain, net_info, save_text
+            platform, resolve, reverse, start_trace, cancel_trace, start_probe, stop_probe, geo_lookup, geo_self, rdap_ip, rdap_domain, net_info, save_text, play_cue
         ])
         .run(tauri::generate_context!())
         .expect("error while running Hopscotch");

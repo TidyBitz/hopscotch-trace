@@ -1207,8 +1207,14 @@ const Sound = (() => {
    }
   };
   let pack = store.get('soundPack', 'chirp'); if (!packs[pack]) pack = 'chirp';
+  let nativeOk = true;
   return {
-    play(name, a, b) { if (!on) return; try { if (ensure()) packs[pack][name](a, b); } catch (e) { /* audio unavailable */ } },
+    play(name, a, b) {
+      if (!on) return;
+      // in the desktop app the shell plays the cue; if it can't (no device), Web Audio takes over from then on
+      if (nativeOk && LIVE && LIVE.playCue) { LIVE.playCue(name, pack, a == null ? 40 : +a, b == null ? 0 : +b, vol).catch(() => { nativeOk = false; }); return; }
+      try { if (ensure()) packs[pack][name](a, b); } catch (e) { /* audio unavailable */ }
+    },
     get pack() { return pack; }, set pack(v) { if (packs[v]) { pack = v; store.set('soundPack', v); } },
     get on() { return on; }, set on(v) { on = !!v; store.set('soundOn', on); if (master) master.gain.value = level(); },
     get vol() { return vol; }, set vol(v) { vol = clamp(+v || 0, 0, 100); store.set('vol', vol); if (master) master.gain.value = level(); }

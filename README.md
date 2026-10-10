@@ -6,7 +6,7 @@ A visual traceroute for the desktop, in the spirit of the classic NeoTrace: the 
 
 ## What it does
 
-- **Trace** any host name or address. Hops appear as they answer, on the map and in the table, with a chirp per hop (three sound packs, or silence).
+- **Trace** any host name or address. Hops appear as they answer, on the map and in the table, with a chirp per hop (three sound packs, or silence), played by the app through the system audio output.
 - **Real world map** with five styles (Modern, Classic 2001, Parchment, Cyber, Blueprint), five colour skins, light and dark themes.
 - **Details** for every hop: name, address, place, network and AS number, the leg from the previous hop, and the registration record over RDAP (the successor to WHOIS), looked up only for the hop you pick.
 - **Keep probing**: every hop pinged on an interval you choose; the Ping view charts one hop over time with a cursor you can drag across, a log of drops, and CSV or printable reports.

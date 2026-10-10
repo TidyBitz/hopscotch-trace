@@ -47,6 +47,8 @@
     netInfo: () => invoke('net_info'),
     /* open a web address in the person's browser (the opener plugin; only http(s) is allowed) */
     openUrl: url => invoke('plugin:opener|open_url', { url }),
+    /* the shell plays the cue itself (WebKit's audio path is unreliable inside an AppImage) */
+    playCue: (name, pack, rtt, pan, vol) => invoke('play_cue', { name, pack, rtt, pan, vol }),
     /* save(name, text) → the path written, or null when the person cancelled */
     async save(name, text) {
       const ext = (name.split('.').pop() || 'txt').toLowerCase();
