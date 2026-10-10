@@ -26,7 +26,7 @@ Trends compares any two saved runs hop by hop and says where the time went.
 
 ![Trends for a target: round trip over time, two runs compared hop by hop, and a small chart per hop](screenshots/trends.png)
 
-## Home, in three styles
+## Styles
 
 ![Home in the Classic 2001 map style, with the style picker open](screenshots/home-classic.png)
 
