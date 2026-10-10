@@ -1973,18 +1973,21 @@ const App = (() => {
   function homeRows() {
     const items = homeItems();
     if (!items.length) return `<tr><td colspan="6" class="fail">${history.length ? 'Nothing matches that search.' : 'Nothing traced yet.'}</td></tr>`;
-    const full = items.map(it => { const tr = it.tr, d = tr.fail ? null : tr.hops[tr.hops.length - 1], c = d && CITY[d.c], rs = runsOf(tr.target), last = rs[0]; return { it, tr, d, c, rs, last, rtt: last && last.rtt != null ? last.rtt : d && d.base, live: state.tabs.find(x => x.target === tr.target) }; });
+    const full = items.map(it => { const tr = it.tr, d = tr.fail ? null : tr.hops.slice().reverse().find(h => h && !h.noreply) || null, c = d && CITY[d.c] || null, rs = runsOf(tr.target), last = rs[0]; return { it, tr, d, c, rs, last, rtt: last && last.rtt != null ? last.rtt : d && d.base, live: state.tabs.find(x => x.target === tr.target) }; });
     return sorted('home', full, (x, k) => k === 't' ? x.tr.target : k === 'end' ? (x.c ? x.c.n : null) : k === 'runs' ? x.rs.length : k === 'rtt' ? (x.tr.fail ? null : x.rtt) : k === 'when' ? (x.live && x.live.keep ? Infinity : x.it.e.when) : null).map(({ it, tr, d, c, rs, last, rtt, live }) => {
-      return `<tr data-open="${esc(tr.target)}" class="${hot === tr.target ? 'on' : ''}"><td class="t" title="${esc(tr.target)}"><i style="--c:var(--net-${it.k})"></i>${esc(tr.target)}</td>` +
-        (tr.fail || !d ? `<td class="fail" colspan="3">${tr.fail ? 'No address found' : 'No route saved yet'}</td>` : `<td>${esc(c.n)}${d.anycast ? ', answered nearby' : ', ' + esc(c.country)}</td>` +
-          `<td class="c-hops">${rs.length ? `<button type="button" class="runs-btn" data-runs="${esc(tr.target)}" title="Trends for ${esc(tr.target)}">${rs.length} run${rs.length === 1 ? '' : 's'}${tinyTrend(rs)}</button>` : ''}</td><td class="num c-rtt">${fmt(rtt)} ms</td>`) +
-        `<td class="c-when">${live && live.keep ? `<button type="button" class="probing stop" data-stop="${esc(tr.target)}" title="Click to stop probing ${esc(tr.target)}">Probing now<i>Stop</i></button>` : esc(ago(it.e.when)) + (last && last.net ? ', ' + esc(NETWORKS[last.net].n) : '')}</td>` +
-        (state.confirmForget === tr.target ? `<td class="acts asking" colspan="1"><span class="ask">Remove ${esc(tr.target)} and ${rs.length ? `its ${rs.length} saved run${rs.length === 1 ? '' : 's'}` : 'its history'}? This can't be undone. <button type="button" class="btn danger" data-forget-yes="${esc(tr.target)}">Remove</button><button type="button" class="btn" data-forget-no>Keep</button></span></td>` :
-        `<td class="acts"><button type="button" data-again="${esc(tr.target)}">Run again</button><button type="button" class="x" data-forget="${esc(tr.target)}" aria-label="Remove ${esc(tr.target)} and its history" title="Remove from this list, with its runs">${ICON.x}</button></td>`) + `</tr>`;
+      try { return homeRow({ it, tr, d, c, rs, last, rtt, live }); } catch (e) { console.error('home row', tr.target, e); return `<tr data-open="${esc(tr.target)}"><td class="t">${esc(tr.target)}</td><td class="fail" colspan="4">This entry couldn't be shown (${esc(String(e && e.message || e))})</td><td class="acts"><button type="button" class="x" data-forget="${esc(tr.target)}" aria-label="Remove ${esc(tr.target)}" title="Remove from this list, with its runs">${ICON.x}</button></td></tr>`; }
     }).join('');
   }
+  function homeRow({ it, tr, d, c, rs, last, rtt, live }) {
+      return `<tr data-open="${esc(tr.target)}" class="${hot === tr.target ? 'on' : ''}"><td class="t" title="${esc(tr.target)}"><i style="--c:var(--net-${it.k})"></i>${esc(tr.target)}</td>` +
+        (tr.fail || !d ? `<td class="fail" colspan="3">${tr.fail ? 'No address found' : 'No route saved yet'}</td>` : `<td>${c ? esc(c.n) + (d.anycast ? ', answered nearby' : c.country ? ', ' + esc(c.country) : '') : 'Somewhere'}</td>` +
+          `<td class="c-hops">${rs.length ? `<button type="button" class="runs-btn" data-runs="${esc(tr.target)}" title="Trends for ${esc(tr.target)}">${rs.length} run${rs.length === 1 ? '' : 's'}${tinyTrend(rs)}</button>` : ''}</td><td class="num c-rtt">${fmt(rtt)} ms</td>`) +
+        `<td class="c-when">${live && live.keep ? `<button type="button" class="probing stop" data-stop="${esc(tr.target)}" title="Click to stop probing ${esc(tr.target)}">Probing now<i>Stop</i></button>` : esc(ago(it.e.when)) + (last && last.net && NETWORKS[last.net] ? ', ' + esc(NETWORKS[last.net].n) : '')}</td>` +
+        (state.confirmForget === tr.target ? `<td class="acts asking" colspan="1"><span class="ask">Remove ${esc(tr.target)} and ${rs.length ? `its ${rs.length} saved run${rs.length === 1 ? '' : 's'}` : 'its history'}? This can't be undone. <button type="button" class="btn danger" data-forget-yes="${esc(tr.target)}">Remove</button><button type="button" class="btn" data-forget-no>Keep</button></span></td>` :
+        `<td class="acts"><button type="button" data-again="${esc(tr.target)}">Run again</button><button type="button" class="x" data-forget="${esc(tr.target)}" aria-label="Remove ${esc(tr.target)} and its history" title="Remove from this list, with its runs">${ICON.x}</button></td>`) + `</tr>`;
+  }
   function homeLead() {
-    const here = [CITY[HOME].lon, CITY[HOME].lat], facts = history.map(e => traceFor(e.target)).filter(tr => !tr.fail).map(tr => { const d = tr.hops[tr.hops.length - 1], c = CITY[d.c], last = runsOf(tr.target)[0]; return { d, c, ms: last && last.rtt != null ? last.rtt : d.base, far: km(here, [c.lon, c.lat]) }; });
+    const here = [CITY[HOME].lon, CITY[HOME].lat], facts = history.map(e => traceFor(e.target)).filter(tr => !tr.fail).map(tr => { const d = tr.hops.slice().reverse().find(h => h && !h.noreply), c = d && CITY[d.c], last = runsOf(tr.target)[0]; return { d, c, ms: last && last.rtt != null ? last.rtt : d && d.base, far: c ? km(here, [c.lon, c.lat]) : 0 }; }).filter(f => f.d && f.c);
     if (!facts.length) return 'Nothing traced yet. Type a host name above and press Trace, or pick a suggestion.';
     const far = facts.reduce((a, b) => b.far > a.far ? b : a), slow = facts.reduce((a, b) => b.ms > a.ms ? b : a), n = history.length;
     return `${n} place${n === 1 ? '' : 's'}, ${runs.length} run${runs.length === 1 ? '' : 's'}. ` + (far.far < 60 ? 'None of them left town.' : far === slow ? `${esc(far.c.n)} is both the farthest and the slowest: about ${dist(far.far)} away and ${fmt(slow.ms)} ms.` : `Farthest: ${esc(far.c.n)}, about ${dist(far.far)}. Slowest: ${esc(slow.c.n)}, ${fmt(slow.ms)} ms.`);
@@ -2412,7 +2415,8 @@ const App = (() => {
   function hydrateLive(tr) {
     const run = runsOf(tr.target)[0]; tr.hops = []; tr.nets = ['home'];
     if (!run || !run.route || !run.route.length) { tr.revealed = 0; tr.status = 'idle'; buildGeometry(tr); return; }
-    run.route.forEach((e, i) => {
+    let upto = run.route.length; while (upto > 1 && !run.route[upto - 1]) upto--;
+    run.route.slice(0, upto).forEach((e, i) => {
       const h = liveHop(tr, i, e ? e.ip : null); h.revealed = true; h.resolved = true;
       if (e) {
         h.host = e.name || e.ip; h.noName = !e.name || e.name === e.ip; h.dest = !!e.dest; h.priv = !!e.priv; h.access = e.kind ? e.kind !== 'public' : h.access; h.kind = e.kind || h.kind;
@@ -2608,6 +2612,8 @@ const App = (() => {
       if (a.dataset.act === 'sound') { state.pingSound = a.checked; store.set('pingSound', a.checked); if (a.checked) Sound.play('timeout'); }
     });
 
+    addEventListener('error', e => { try { setStatus(`Something went wrong: ${e.message || e.error}`); } catch (x) { /* the status line itself is gone */ } });
+    addEventListener('unhandledrejection', e => { try { setStatus(`Something went wrong: ${e.reason && e.reason.message || e.reason}`); } catch (x) { /* nothing to show it in */ } });
     els.tabs.addEventListener('scroll', updateTabArrows, { passive: true }); addEventListener('resize', updateTabArrows);
     els.tabs.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { els.tabs.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
     $('#tabPrev').addEventListener('click', () => els.tabs.scrollBy({ left: -Math.max(160, els.tabs.clientWidth * .6), behavior: 'smooth' }));

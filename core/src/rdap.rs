@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const UA: &str = concat!("hopscotch-trace/", env!("CARGO_PKG_VERSION"), " (+https://github.com/TidyBitz/hopscotch-trace)");
 
@@ -46,7 +46,11 @@ pub struct DomainRecord {
 }
 
 fn get(url: &str) -> crate::Result<(Value, String)> {
-    let r = ureq::get(url).set("Accept", "application/rdap+json, application/json").set("User-Agent", UA).timeout(Duration::from_secs(12)).call()?;
+    get_within(url, Duration::from_secs(12))
+}
+
+fn get_within(url: &str, timeout: Duration) -> crate::Result<(Value, String)> {
+    let r = ureq::get(url).set("Accept", "application/rdap+json, application/json").set("User-Agent", UA).timeout(timeout).call()?;
     let final_url = r.get_url().to_string();
     let v: Value = r.into_json()?;
     Ok((v, final_url))
@@ -170,7 +174,13 @@ struct Bootstrap {
     dns: Vec<(String, String)>,
 }
 
-static BOOT: OnceLock<Mutex<Option<Bootstrap>>> = OnceLock::new();
+struct BootState {
+    table: Option<Bootstrap>,
+    tried: Option<Instant>,
+}
+
+static BOOT: OnceLock<Mutex<BootState>> = OnceLock::new();
+const RETRY_AFTER: Duration = Duration::from_secs(600);
 
 /// `services: [[[keys...], [urls...]], ...]` → (keys, first https url) per service
 fn services(v: &Value) -> Vec<(Vec<String>, String)> {
@@ -209,18 +219,29 @@ fn parse_bootstrap(v4: &Value, v6: &Value, dns: &Value) -> Bootstrap {
     b
 }
 
+/// The bootstrap tables, fetched once per run. The network work happens
+/// outside the lock, with short timeouts, and a failed fetch is not retried
+/// for a while, so a lookup never waits on IANA for long: without the tables
+/// it simply goes to rdap.org.
 fn with_bootstrap<T>(f: impl FnOnce(&Bootstrap) -> Option<T>) -> Option<T> {
-    let cell = BOOT.get_or_init(|| Mutex::new(None));
-    let mut guard = cell.lock().ok()?;
-    if guard.is_none() {
-        let fetch = |name: &str| get(&format!("https://data.iana.org/rdap/{name}.json")).map(|(v, _)| v).unwrap_or(Value::Null);
-        let b = parse_bootstrap(&fetch("ipv4"), &fetch("ipv6"), &fetch("dns"));
-        if b.v4.is_empty() && b.dns.is_empty() {
-            return None; // could not fetch: leave it so the next lookup tries again
+    let cell = BOOT.get_or_init(|| Mutex::new(BootState { table: None, tried: None }));
+    let need = {
+        let mut g = cell.lock().ok()?;
+        let due = g.table.is_none() && g.tried.map_or(true, |t| t.elapsed() > RETRY_AFTER);
+        if due {
+            g.tried = Some(Instant::now());
         }
-        *guard = Some(b);
+        due
+    };
+    if need {
+        let fetch = |name: &str| get_within(&format!("https://data.iana.org/rdap/{name}.json"), Duration::from_secs(5)).map(|(v, _)| v).unwrap_or(Value::Null);
+        let b = parse_bootstrap(&fetch("ipv4"), &fetch("ipv6"), &fetch("dns"));
+        if !(b.v4.is_empty() && b.dns.is_empty()) {
+            cell.lock().ok()?.table = Some(b);
+        }
     }
-    f(guard.as_ref()?)
+    let g = cell.lock().ok()?;
+    f(g.table.as_ref()?)
 }
 
 fn base_for_ip(b: &Bootstrap, ip: IpAddr) -> Option<String> {

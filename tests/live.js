@@ -109,8 +109,21 @@ const fs = require('fs');
   check('dead end explained', /can't be reached from here/.test(await txt('#status')) && /host is unreachable/.test(await txt('#status')), await txt('#status'));
   await p.evaluate(() => { delete window.__FAKE_REACHED; window.__FAKE_ROUTE = null; });
 
+  // a run that ends in silence (older builds saved these): Home still lists it, ended at the last router that answered
+  await p.evaluate(() => { window.__FAKE_ROUTE = [
+    { hop: 1, addrs: ['192.168.1.1'], rtts: [1.1, 1.0, 1.2] }, { hop: 2, addrs: ['198.51.100.7'], rtts: [12, 12.4, 12.1] },
+    { hop: 3, addrs: [], rtts: [null, null, null] }, { hop: 4, addrs: [], rtts: [null, null, null] }]; });
+  await p.fill('#target', 'tail.example'); await p.keyboard.press('Enter'); await p.waitForTimeout(1600);
+  await p.evaluate(() => { window.__FAKE_ROUTE = null; });
+  await p.click('#homeBtn'); await p.waitForTimeout(400);
+  const tailRow = await p.$eval('.hist tr[data-open="tail.example"]', r => r.textContent.replace(/\s+/g, ' ').trim()).catch(() => '');
+  check('silent-tailed run listed on Home', /Chicago/.test(tailRow), tailRow || 'row missing; home=' + (await p.$eval('#viewHome', e => e.innerHTML.length)));
+  check('Home status set', /^Home\./.test(await txt('#status')), await txt('#status'));
+  await p.reload(); await p.waitForTimeout(700);
+  check('Home survives a reload with that run', (await p.$$eval('.hist tbody tr[data-open]', r => r.length)) >= 2, 'rows=' + await p.$$eval('.hist tbody tr[data-open]', r => r.length));
+
   // many tabs: the strip scrolls and shows an arrow at the overflowing end
-  for (const t of ['a1.example', 'a2.example', 'a3.example', 'a4.example', 'a5.example', 'a6.example', 'a7.example', 'a8.example']) { await p.fill('#target', t); await p.keyboard.press('Enter'); await p.waitForTimeout(150); }
+  for (let k = 1; k <= 12; k++) { await p.fill('#target', `a${k}.example`); await p.keyboard.press('Enter'); await p.waitForTimeout(150); }
   await p.waitForTimeout(400);
   const tabsInfo = await p.evaluate(() => ({ n: document.querySelectorAll('.tab').length, over: document.getElementById('tabs').scrollWidth > document.getElementById('tabs').clientWidth, prev: !document.getElementById('tabPrev').hidden, next: !document.getElementById('tabNext').hidden }));
   check('tabs are kept, not dropped', tabsInfo.n >= 12, 'tabs=' + tabsInfo.n);
