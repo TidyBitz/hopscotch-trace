@@ -4,6 +4,8 @@ A visual traceroute for the desktop, in the spirit of the classic NeoTrace: the 
 
 > Status: **0.2, pre-release.** On Linux the app sends its own probes; Windows and macOS run the system traceroute tool. Tested daily on Fedora; the Windows and macOS builds need real-world testing before it is ready for other people. See *Testing* below.
 
+**Download the latest release:** [Windows](https://github.com/TidyBitz/hopscotch-trace/releases/latest/download/Hopscotch-portable-windows-x64.exe) · [macOS](https://github.com/TidyBitz/hopscotch-trace/releases/latest/download/Hopscotch-macos-universal.app.zip) · [Linux AppImage](https://github.com/TidyBitz/hopscotch-trace/releases/latest/download/Hopscotch-linux-x86_64.AppImage) · [all files](https://github.com/TidyBitz/hopscotch-trace/releases/latest)
+
 ## Screenshots
 
 A live trace to a mirror in New Zealand. The map draws the route hop by hop; the table below it keeps the names, places, networks and round trips; the pane on the right has the registration record for the hop you pick.
@@ -34,13 +36,13 @@ Nothing phones home. The only outside services used are the geolocation lookup (
 
 ## Downloads
 
-Every push to `main` builds all three platforms in GitHub Actions; tagged releases attach them to a Release. Portable builds, no installer needed:
+Every tagged release carries builds for all three platforms, on the [Releases page](https://github.com/TidyBitz/hopscotch-trace/releases). The links below always point at the newest release. Portable builds, no installer needed:
 
 | Platform | File | Notes |
 | --- | --- | --- |
-| Windows 10/11 | `Hopscotch-portable-windows-x64.exe` | Needs the WebView2 runtime, which Windows ships. An NSIS installer is built too. |
-| macOS 10.15+ | `Hopscotch-macos-universal.app.zip` | Not notarized yet: the first time, right-click the app and choose Open. |
-| Linux | `Hopscotch-linux-x86_64.AppImage` | `chmod +x` and run. Needs `traceroute` or `tracepath` installed (see below). A `.deb` is built too. The AppImage bundles WebKitGTK and GStreamer but leaves Wayland, X11 and Mesa to the host, so it runs on current Fedora and Ubuntu alike. |
+| Windows 10/11 | [`Hopscotch-portable-windows-x64.exe`](https://github.com/TidyBitz/hopscotch-trace/releases/latest/download/Hopscotch-portable-windows-x64.exe) | Needs the WebView2 runtime, which Windows ships. An installer, `Hopscotch_<version>_x64-setup.exe`, is on the release page too. |
+| macOS 10.15+ | [`Hopscotch-macos-universal.app.zip`](https://github.com/TidyBitz/hopscotch-trace/releases/latest/download/Hopscotch-macos-universal.app.zip) | Not notarized yet: the first time, right-click the app and choose Open. A `.dmg` is on the release page too. |
+| Linux | [`Hopscotch-linux-x86_64.AppImage`](https://github.com/TidyBitz/hopscotch-trace/releases/latest/download/Hopscotch-linux-x86_64.AppImage) | `chmod +x` and run; nothing else to install. A `.deb` is on the release page too. The AppImage bundles WebKitGTK and GStreamer but leaves Wayland, X11, Mesa and ALSA to the host, so it runs on current Fedora and Ubuntu alike. |
 
 ## How it traces
 
@@ -87,7 +89,7 @@ ui/            the app page (index.html), the live bridge (live.js), favicon
 core/          hopscotch-core: traceroute runner and parsers, ping, geo, RDAP, DNS, network info
 src-tauri/     the desktop shell: Tauri commands and events over the core crate
 tests/         Playwright smoke tests and the fake backend
-tools/         the patch that folded live mode into the demo page (history)
+docs/          screenshots
 .github/       the three-platform build
 ```
 
