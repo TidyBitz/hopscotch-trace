@@ -1,5 +1,10 @@
 # Hopscotch
 
+[![Latest release](https://img.shields.io/github/v/release/TidyBitz/hopscotch-trace?label=release)](https://github.com/TidyBitz/hopscotch-trace/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/TidyBitz/hopscotch-trace/total?label=downloads)](https://github.com/TidyBitz/hopscotch-trace/releases)
+[![Build](https://github.com/TidyBitz/hopscotch-trace/actions/workflows/build.yml/badge.svg)](https://github.com/TidyBitz/hopscotch-trace/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A visual traceroute for the desktop, in the spirit of the classic NeoTrace: the route your packets take, drawn hop by hop on a real world map, with continuous probing so you can watch drops as they happen and trends across every run you've saved.
 
 > Status: **0.2, pre-release.** On Linux the app sends its own probes; Windows and macOS run the system traceroute tool. Tested daily on Fedora; the Windows and macOS builds need real-world testing before it is ready for other people. See *Testing* below.
